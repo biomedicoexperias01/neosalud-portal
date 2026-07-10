@@ -689,7 +689,13 @@ const PRESET_TEMPLATE={
     id:'categoria-servicio',
     nombre:'Categoría de servicio',
     columnaFuente:'Descripción Cups',
-    reglas:[{etiqueta:'Home Care',matchType:'startsWith',valor:'ATENCION (VISITA) DOMICILIARIA'}],
+    reglas:[
+      {etiqueta:'Home Care',matchType:'startsWith',valor:'ATENCION (VISITA) DOMICILIARIA'},
+      // Turnos de auxiliares de enfermería (12/8/24 horas, diurnas/nocturnas) → Home Care
+      {etiqueta:'Home Care',matchType:'regex',valor:'\\d+\\s*HORAS.*(ENFERMERIA|ENFERMERA)'},
+      {etiqueta:'Home Care',matchType:'contains',valor:'AUX ENFERMERIA'},
+      {etiqueta:'Home Care',matchType:'contains',valor:'AUXILIAR DE ENFERMERIA'},
+    ],
     etiquetaResto:'Laboratorio',
   }],
   clienteHints:[
@@ -798,6 +804,7 @@ function clasificarFiltroDerivado(row,filtro){
     if(r.matchType==='startsWith'&&val.startsWith(t))return r.etiqueta;
     if(r.matchType==='contains'&&val.includes(t))return r.etiqueta;
     if(r.matchType==='equals'&&val===t)return r.etiqueta;
+    if(r.matchType==='regex'){try{if(new RegExp(r.valor,'i').test(val))return r.etiqueta;}catch(e){}}
   }
   return filtro.etiquetaResto||'Otros';
 }
