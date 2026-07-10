@@ -1248,7 +1248,7 @@ function renderFilters(){
 
     // Derived filters
     (t.filtrosDerivados||[]).forEach((fd,idx)=>{
-      const etiquetas=[...(fd.reglas||[]).map(r=>r.etiqueta).filter(Boolean),fd.etiquetaResto].filter(Boolean);
+      const etiquetas=[...new Set([...(fd.reglas||[]).map(r=>r.etiqueta).filter(Boolean),fd.etiquetaResto].filter(Boolean))];
       const vals=[{valor:'',etiqueta:'Todos'},...etiquetas.map(e=>({valor:e,etiqueta:e}))];
       html+=renderPillGroup(a.id,'d'+idx,fd.nombre,vals,a.filtros['d'+idx]||'');
     });
@@ -2230,7 +2230,7 @@ function construirHoja(wb,archivo,data){
 
   // Por categoría derivada (Home Care / Laboratorio) — referencia a rangos de datos
   (t.filtrosDerivados||[]).forEach(fd=>{
-    const etqs=[...(fd.reglas||[]).map(r=>r.etiqueta).filter(Boolean),fd.etiquetaResto].filter(Boolean);
+    const etqs=[...new Set([...(fd.reglas||[]).map(r=>r.etiqueta).filter(Boolean),fd.etiquetaResto].filter(Boolean))];
     etqs.forEach(etq=>{
       const sub=data.filter(r=>clasificarFiltroDerivado(r,fd)===etq);
       if(!sub.length)return;
