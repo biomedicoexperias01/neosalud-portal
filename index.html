@@ -2359,6 +2359,7 @@ function escH(s){
 let rrData=null;   // {rows, fileName, profs:[...], especialidades:[], clientes:[]}
 let rrFiltros={especialidad:'',cliente:''};
 let rrExpanded=new Set();
+let rrPacExpanded=new Set(); // pacientes expandidos dentro de cada profesional
 
 const RR_COLS_REQ=['FECHA','DOC. PROFESIONAL','NOMRE PROFESIONAL','NOMBRE ESPECIALIDAD','DOCUMENTO PAC'];
 
@@ -2465,6 +2466,7 @@ function rrBuildData(rows,fileName){
   };
   rrFiltros={especialidad:'',cliente:''};
   rrExpanded=new Set();
+  rrPacExpanded=new Set();
   rrRenderChip();
   rrRenderFilters();
   rrRender();
@@ -2604,8 +2606,12 @@ function rrRender(){
             <div style="font-size:26px;font-weight:800;color:#7030A0;">${p.numDias.toLocaleString()}</div>
           </div>
         </div>
-        <div style="font-weight:700;font-size:12px;color:var(--brand);margin-bottom:6px;">👥 PACIENTES ATENDIDOS (${pacs.length}) — fechas y horas de cada atención</div>
-        <div style="max-height:400px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;flex-wrap:wrap;">
+          <div style="font-weight:700;font-size:12px;color:var(--brand);">👥 PACIENTES ATENDIDOS (${pacs.length}) — haz clic en un paciente para ver sus fechas y horas</div>
+          <span class="pill" style="font-size:11px;" onclick="event.stopPropagation();rrExpandAllPacs('${escH(key).replace(/'/g,"\\'")}')">➕ Expandir todos</span>
+          <span class="pill" style="font-size:11px;" onclick="event.stopPropagation();rrCollapseAllPacs('${escH(key).replace(/'/g,"\\'")}')">➖ Colapsar todos</span>
+        </div>
+        <div style="max-height:420px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;">
         <table style="font-size:12px;"><thead><tr>
           <th>Fecha</th><th>Hora</th><th>Adm.</th>
           <th>Procedimiento / Servicio</th><th>Cliente</th><th style="text-align:center;">Jornada (hrs)</th>
@@ -2613,17 +2619,24 @@ function rrRender(){
         ${pacs.map(pa=>{
           const horasPac=pa.regs.reduce((s,x)=>s+(x.jornada!==''?x.jornada:0),0);
           const cliPac=[...new Set(pa.regs.map(x=>x.cliente).filter(Boolean))].join(' / ');
-          return `<tr><td colspan="6" style="background:var(--brand);color:#fff;font-weight:700;padding:5px 10px;">
+          const pacKey=key+'||'+(pa.doc||pa.nombre);
+          const pacOpen=rrPacExpanded.has(pacKey);
+          let bloque=`<tr><td colspan="6" style="background:var(--brand);color:#fff;font-weight:700;padding:5px 10px;cursor:pointer;"
+            onclick="event.stopPropagation();rrTogglePac('${escH(pacKey).replace(/'/g,"\\'")}')">
+            <span style="display:inline-block;width:14px;">${pacOpen?'▼':'▶'}</span>
             👤 ${escH(pa.nombre)}${pa.doc?' · CC '+escH(pa.doc):''} — ${pa.regs.length} atenciones${horasPac>0?' · '+horasPac+' hrs marcadas':''}${cliPac?' · 🏢 '+escH(cliPac):''}
-          </td></tr>`+
-          pa.regs.map(x=>`<tr>
-            <td style="white-space:nowrap;">${escH(x.fecha)}</td>
-            <td style="white-space:nowrap;">${escH(x.hora)}</td>
-            <td style="white-space:nowrap;">${escH(x.adm)}</td>
-            <td>${escH(x.cup)}</td>
-            <td>${escH(x.cliente)}</td>
-            <td style="text-align:center;font-weight:700;">${x.jornada!==''?x.jornada:''}</td>
-          </tr>`).join('');
+          </td></tr>`;
+          if(pacOpen){
+            bloque+=pa.regs.map(x=>`<tr>
+              <td style="white-space:nowrap;">${escH(x.fecha)}</td>
+              <td style="white-space:nowrap;">${escH(x.hora)}</td>
+              <td style="white-space:nowrap;">${escH(x.adm)}</td>
+              <td>${escH(x.cup)}</td>
+              <td>${escH(x.cliente)}</td>
+              <td style="text-align:center;font-weight:700;">${x.jornada!==''?x.jornada:''}</td>
+            </tr>`).join('');
+          }
+          return bloque;
         }).join('')}
         </tbody></table>
         </div>
@@ -2651,8 +2664,21 @@ function rrToggle(key){
   rrRender();
 }
 
+function rrTogglePac(pacKey){
+  if(rrPacExpanded.has(pacKey))rrPacExpanded.delete(pacKey);else rrPacExpanded.add(pacKey);
+  rrRender();
+}
+
+function rrPacKeysDe(profKey){
+  const p=rrData?.profs.find(x=>(x.doc||x.nombre)===profKey);
+  if(!p)return[];
+  return [...new Set(p.registros.map(x=>profKey+'||'+(x.pacDoc||x.pacNombre)))];
+}
+function rrExpandAllPacs(profKey){rrPacKeysDe(profKey).forEach(k=>rrPacExpanded.add(k));rrRender();}
+function rrCollapseAllPacs(profKey){rrPacKeysDe(profKey).forEach(k=>rrPacExpanded.delete(k));rrRender();}
+
 function rrClearAll(){
-  rrData=null;rrExpanded=new Set();
+  rrData=null;rrExpanded=new Set();rrPacExpanded=new Set();
   document.getElementById('rrFileChips').innerHTML='';
   document.getElementById('rrFiltersPanel').style.display='none';
   document.getElementById('rrActionsPanel').style.display='none';
