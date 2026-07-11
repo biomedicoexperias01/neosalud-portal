@@ -436,11 +436,11 @@ tfoot td.num{text-align:right;}
         <div class="area-name">Facturación</div>
         <div class="area-desc">Organización de reportes SIH, cargos por paciente, filtros por sede, estado y categoría de servicio.</div>
       </div>
-      <div class="area-card soon">
-        <div class="area-badge soon">Próximamente</div>
+      <div class="area-card" onclick="goArea('rrhh')">
+        <div class="area-badge new">Activo</div>
         <div class="area-icon">👥</div>
         <div class="area-name">Recursos Humanos</div>
-        <div class="area-desc">Gestión de personal, nómina, novedades y reportes de RRHH.</div>
+        <div class="area-desc">Consolidado de trabajo por profesional: atenciones, pacientes, horas y especialidades.</div>
       </div>
       <div class="area-card soon">
         <div class="area-badge soon">Próximamente</div>
@@ -585,6 +585,96 @@ tfoot td.num{text-align:right;}
         </div>
       </div>
 
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     VIEW: RECURSOS HUMANOS
+══════════════════════════════════════════════════════════ -->
+<div class="view" id="view-rrhh">
+  <div class="app-wrap">
+
+    <!-- STATS BAR RRHH -->
+    <div class="stats-bar">
+      <div class="stat-card">
+        <div class="stat-label">🧑‍⚕️ Profesionales</div>
+        <div class="stat-value" id="rrStatProfs">—</div>
+        <div class="stat-sub" id="rrStatProfsSub">carga un archivo CSV</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">📋 Atenciones</div>
+        <div class="stat-value" id="rrStatAten">—</div>
+        <div class="stat-sub" id="rrStatAtenSub">después de filtros</div>
+      </div>
+      <div class="stat-card green">
+        <div class="stat-label">👥 Pacientes únicos</div>
+        <div class="stat-value" id="rrStatPacs">—</div>
+        <div class="stat-sub">atendidos en el periodo</div>
+      </div>
+      <div class="stat-card orange">
+        <div class="stat-label">⏱️ Horas registradas</div>
+        <div class="stat-value" id="rrStatHoras">—</div>
+        <div class="stat-sub" id="rrStatHorasSub">suma jornada laboral</div>
+      </div>
+    </div>
+
+    <div class="app-layout">
+      <!-- LEFT: UPLOAD + FILTROS -->
+      <div class="left-col">
+        <div class="panel" style="margin-bottom:16px;">
+          <div class="panel-header">📂 Archivo Indicador CSV</div>
+          <div class="panel-body">
+            <div class="dropzone" id="rrDropzone">
+              <div class="dropzone-icon">🧑‍⚕️</div>
+              <div class="dropzone-text">Arrastra CSV o haz clic</div>
+              <div class="dropzone-hint">Reporte Indicador de profesionales</div>
+              <input type="file" id="rrFileInput" style="display:none;" accept=".csv,text/csv">
+            </div>
+            <div class="file-chips" id="rrFileChips"></div>
+          </div>
+        </div>
+
+        <div class="panel" id="rrFiltersPanel" style="display:none;">
+          <div class="panel-header">🔍 Filtros</div>
+          <div class="panel-body" id="rrFiltersBody"></div>
+        </div>
+
+        <div id="rrActionsPanel" style="display:none;margin-top:16px;">
+          <button class="btn btn-primary btn-block" onclick="rrExportExcel()">📊 Exportar Excel</button>
+          <div style="display:flex;gap:8px;margin-top:8px;">
+            <button class="btn btn-secondary" style="flex:1;" onclick="rrClearAll()">🗑️ Limpiar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: RESUMEN CONSOLIDADO -->
+      <div class="preview-panel">
+        <div class="client-banner" id="rrBanner" style="display:none;">
+          <div class="cb-icon">🧑‍⚕️</div>
+          <div class="cb-info">
+            <div class="cb-name">Consolidado de Profesionales</div>
+            <div class="cb-file" id="rrBannerSub"></div>
+          </div>
+          <div class="cb-stats" id="rrBannerStats"></div>
+        </div>
+
+        <div class="preview-toolbar">
+          <div class="preview-toolbar-left">
+            <span class="preview-title">Resumen por profesional</span>
+            <span class="record-count" id="rrCount">Sin datos</span>
+          </div>
+          <input class="search-box" id="rrSearchBox" placeholder="🔎 Buscar profesional..." oninput="rrRender()">
+        </div>
+
+        <div id="rrTableContainer">
+          <div class="empty-state">
+            <div class="empty-icon">🧑‍⚕️</div>
+            <div class="empty-text">Carga el archivo Indicador para comenzar</div>
+            <div class="empty-hint">Verás el trabajo consolidado de cada profesional: atenciones, pacientes y horas</div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -838,6 +928,12 @@ function goArea(area){
       '<span onclick="goHome()" style="cursor:pointer">🏠 Inicio</span>'+
       '<span class="sep">›</span>'+
       '<span class="current">🧾 Facturación</span>';
+  }else if(area==='rrhh'){
+    showView('rrhh');
+    document.getElementById('breadcrumb').innerHTML=
+      '<span onclick="goHome()" style="cursor:pointer">🏠 Inicio</span>'+
+      '<span class="sep">›</span>'+
+      '<span class="current">👥 Recursos Humanos</span>';
   }
 }
 
@@ -2252,6 +2348,485 @@ function escH(s){
   if(s===null||s===undefined)return'';
   return s.toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+// ═══════════════════════════════════════════════════════════
+// MÓDULO RECURSOS HUMANOS (Indicador de profesionales)
+// ═══════════════════════════════════════════════════════════
+let rrData=null;   // {rows, fileName, profs:[...], especialidades:[], clientes:[]}
+let rrFiltros={especialidad:'',cliente:''};
+let rrExpanded=new Set();
+
+const RR_COLS_REQ=['FECHA','DOC. PROFESIONAL','NOMRE PROFESIONAL','NOMBRE ESPECIALIDAD','DOCUMENTO PAC'];
+
+function rrCleanName(s){return (s||'').toString().replace(/[\t\s]+/g,' ').trim();}
+
+function rrInit(){
+  const dz=document.getElementById('rrDropzone');
+  const fi=document.getElementById('rrFileInput');
+  if(!dz)return;
+  dz.addEventListener('click',()=>fi.click());
+  dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('dragover');});
+  dz.addEventListener('dragleave',()=>dz.classList.remove('dragover'));
+  dz.addEventListener('drop',e=>{
+    e.preventDefault();dz.classList.remove('dragover');
+    if(e.dataTransfer.files.length)rrProcessFile(e.dataTransfer.files[0]);
+  });
+  fi.addEventListener('change',e=>{if(e.target.files.length)rrProcessFile(e.target.files[0]);fi.value='';});
+}
+
+function rrProcessFile(file){
+  const reader=new FileReader();
+  reader.onload=e=>{
+    Papa.parse(e.target.result,{
+      header:true,skipEmptyLines:true,delimiter:';',
+      transformHeader:h=>h.trim(),
+      complete:r=>{
+        const cols=r.meta.fields||[];
+        const missing=RR_COLS_REQ.filter(c=>!cols.includes(c));
+        if(missing.length){
+          showToast('Este archivo no parece un Indicador de profesionales. Faltan columnas: '+missing.join(', '),'error');
+          return;
+        }
+        const rows=r.data.filter(row=>rrCleanName(row['NOMRE PROFESIONAL']));
+        rrBuildData(rows,file.name);
+      },
+    });
+  };
+  reader.readAsText(file,'ISO-8859-1');
+}
+
+function rrBuildData(rows,fileName){
+  const map={};
+  rows.forEach(r=>{
+    const doc=(r['DOC. PROFESIONAL']||'').toString().trim();
+    const nombre=rrCleanName(r['NOMRE PROFESIONAL']);
+    const key=doc||nombre;
+    if(!map[key])map[key]={
+      doc,nombre,
+      especialidades:new Set(),atenciones:0,pacientes:new Set(),
+      horas:0,atenConHoras:0,dias:new Set(),clientes:new Set(),
+      cups:{},pacDetalle:{},registros:[],fechaMin:'',fechaMax:'',
+    };
+    const p=map[key];
+    p.atenciones++;
+    const esp=rrCleanName(r['NOMBRE ESPECIALIDAD'])||'SIN ESPECIALIDAD';
+    p.especialidades.add(esp);
+    const docPac=(r['DOCUMENTO PAC']||'').toString().trim();
+    const nomPac=rrCleanName([r['NOMBRE PACIENTE'],r['PRIMER APELLIDO'],r['SEGUNDO APELLIDO']].filter(Boolean).join(' '));
+    if(docPac)p.pacientes.add(docPac);
+    const jl=parseFloat(r['JORNADA LABORAL']);
+    if(!isNaN(jl)&&jl>0){p.horas+=jl;p.atenConHoras++;}
+    const f=(r['FECHA']||'').toString().trim();
+    if(f){
+      p.dias.add(f);
+      if(!p.fechaMin||f<p.fechaMin)p.fechaMin=f;
+      if(!p.fechaMax||f>p.fechaMax)p.fechaMax=f;
+    }
+    const cli=rrCleanName(r['NOMBRE CLIENTE']);
+    if(cli)p.clientes.add(cli);
+    const cup=rrCleanName(r['NOMBRE CUPS'])||'SIN DESCRIPCIÓN';
+    p.cups[cup]=(p.cups[cup]||0)+1;
+    // Detalle por paciente
+    const pk=docPac||nomPac;
+    if(!p.pacDetalle[pk])p.pacDetalle[pk]={doc:docPac,nombre:nomPac,atenciones:0,horas:0,fechas:new Set()};
+    p.pacDetalle[pk].atenciones++;
+    if(!isNaN(jl)&&jl>0)p.pacDetalle[pk].horas+=jl;
+    if(f)p.pacDetalle[pk].fechas.add(f);
+    // Registro individual (tal cual el archivo)
+    p.registros.push({
+      fecha:f,
+      hora:(r['HORA']||'').toString().trim(),
+      adm:(r['ADMISION']||'').toString().trim(),
+      pacNombre:nomPac,pacDoc:docPac,
+      cup:cup,
+      jornada:(!isNaN(jl)&&jl>0)?jl:'',
+      cliente:cli,
+    });
+  });
+
+  const profs=Object.values(map).map(p=>({
+    ...p,
+    especialidad:[...p.especialidades].join(' / '),
+    numPacientes:p.pacientes.size,
+    numDias:p.dias.size,
+    clientesList:[...p.clientes],
+  }));
+
+  rrData={
+    rows,fileName,profs,
+    especialidades:[...new Set(profs.map(p=>p.especialidad))].sort(),
+    clientes:[...new Set(rows.map(r=>rrCleanName(r['NOMBRE CLIENTE'])).filter(Boolean))].sort(),
+    fechaMin:rows.reduce((m,r)=>{const f=(r['FECHA']||'').trim();return f&&(!m||f<m)?f:m;},''),
+    fechaMax:rows.reduce((m,r)=>{const f=(r['FECHA']||'').trim();return f&&(!m||f>m)?f:m;},''),
+  };
+  rrFiltros={especialidad:'',cliente:''};
+  rrExpanded=new Set();
+  rrRenderChip();
+  rrRenderFilters();
+  rrRender();
+  document.getElementById('rrFiltersPanel').style.display='';
+  document.getElementById('rrActionsPanel').style.display='';
+  showToast('Archivo cargado: '+profs.length+' profesionales, '+rows.length.toLocaleString()+' atenciones','success');
+}
+
+function rrRenderChip(){
+  const el=document.getElementById('rrFileChips');
+  if(!rrData){el.innerHTML='';return;}
+  el.innerHTML=`<div class="file-chip active" style="border-left:4px solid #7030A0;">
+    <span>🧑‍⚕️</span>
+    <div style="flex:1;min-width:0;">
+      <div style="font-weight:700;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escH(rrData.fileName)}</div>
+      <div style="font-size:11px;color:var(--muted);">${rrData.rows.length.toLocaleString()} reg · ${rrData.profs.length} profesionales · ${escH(rrData.fechaMin)} → ${escH(rrData.fechaMax)}</div>
+    </div>
+    <span style="cursor:pointer;color:var(--red);font-weight:700;" onclick="rrClearAll()">✕</span>
+  </div>`;
+}
+
+function rrRenderFilters(){
+  const body=document.getElementById('rrFiltersBody');
+  if(!rrData){body.innerHTML='';return;}
+  let html='';
+  // Especialidad
+  html+=`<div class="filter-group"><div class="filter-group-label">ESPECIALIDAD</div><div class="pills">`;
+  html+=`<div class="pill ${!rrFiltros.especialidad?'active':''}" onclick="rrSetFiltro('especialidad','')">Todas</div>`;
+  rrData.especialidades.forEach(e=>{
+    html+=`<div class="pill ${rrFiltros.especialidad===e?'active':''}" onclick="rrSetFiltro('especialidad','${escH(e).replace(/'/g,"\\'")}')">${escH(e)}</div>`;
+  });
+  html+=`</div></div>`;
+  // Cliente
+  html+=`<div class="filter-group"><div class="filter-group-label">CLIENTE / EMPRESA</div>
+    <select class="page-size-sel" style="width:100%;" onchange="rrSetFiltro('cliente',this.value)">
+      <option value="">Todos los clientes</option>
+      ${rrData.clientes.map(c=>`<option value="${escH(c)}" ${rrFiltros.cliente===c?'selected':''}>${escH(c)}</option>`).join('')}
+    </select></div>`;
+  body.innerHTML=html;
+}
+
+function rrSetFiltro(k,v){rrFiltros[k]=v;rrRenderFilters();rrRender();}
+
+function rrGetFilteredProfs(){
+  if(!rrData)return[];
+  const q=(document.getElementById('rrSearchBox')?.value||'').toUpperCase().trim();
+  return rrData.profs.filter(p=>{
+    if(rrFiltros.especialidad&&p.especialidad!==rrFiltros.especialidad)return false;
+    if(rrFiltros.cliente&&!p.clientesList.includes(rrFiltros.cliente))return false;
+    if(q&&!(p.nombre.toUpperCase().includes(q)||p.doc.includes(q)))return false;
+    return true;
+  });
+}
+
+function rrRender(){
+  const cont=document.getElementById('rrTableContainer');
+  if(!rrData){return;}
+  const profs=rrGetFilteredProfs().sort((a,b)=>b.atenciones-a.atenciones);
+
+  // Stats
+  const totAten=profs.reduce((s,p)=>s+p.atenciones,0);
+  const totHoras=profs.reduce((s,p)=>s+p.horas,0);
+  const allPacs=new Set();profs.forEach(p=>p.pacientes.forEach(x=>allPacs.add(x)));
+  document.getElementById('rrStatProfs').textContent=profs.length.toLocaleString();
+  document.getElementById('rrStatProfsSub').textContent=rrFiltros.especialidad||'todas las especialidades';
+  document.getElementById('rrStatAten').textContent=totAten.toLocaleString();
+  document.getElementById('rrStatAtenSub').textContent='de '+rrData.rows.length.toLocaleString()+' totales';
+  document.getElementById('rrStatPacs').textContent=allPacs.size.toLocaleString();
+  document.getElementById('rrStatHoras').textContent=totHoras.toLocaleString();
+  document.getElementById('rrStatHorasSub').textContent='en atenciones con jornada';
+  document.getElementById('rrCount').textContent=profs.length+' profesionales';
+
+  const banner=document.getElementById('rrBanner');
+  banner.style.display='flex';
+  document.getElementById('rrBannerSub').textContent=rrData.fileName+' · '+rrData.fechaMin+' → '+rrData.fechaMax;
+  document.getElementById('rrBannerStats').innerHTML=
+    `<div class="cb-stat"><div class="cb-stat-v">${profs.length}</div><div class="cb-stat-l">PROFESIONALES</div></div>
+     <div class="cb-stat"><div class="cb-stat-v">${totAten.toLocaleString()}</div><div class="cb-stat-l">ATENCIONES</div></div>
+     <div class="cb-stat"><div class="cb-stat-v">${totHoras.toLocaleString()}</div><div class="cb-stat-l">HORAS</div></div>`;
+
+  if(!profs.length){
+    cont.innerHTML=`<div class="empty-state"><div class="empty-icon">🔍</div>
+      <div class="empty-text">Ningún profesional coincide con los filtros</div></div>`;
+    return;
+  }
+
+  let html=`<div class="table-wrap"><table><thead><tr>
+    <th style="width:28px;"></th><th>Profesional</th><th>Documento</th><th>Especialidad</th>
+    <th style="text-align:center;">Atenciones</th><th style="text-align:center;">Pacientes</th>
+    <th style="text-align:center;">Horas</th><th style="text-align:center;">Días trab.</th>
+  </tr></thead><tbody>`;
+
+  profs.forEach(p=>{
+    const key=p.doc||p.nombre;
+    const isOpen=rrExpanded.has(key);
+    html+=`<tr style="cursor:pointer;${isOpen?'background:var(--light);':''}" onclick="rrToggle('${escH(key).replace(/'/g,"\\'")}')">
+      <td style="text-align:center;color:var(--brand);font-weight:700;">${isOpen?'▼':'▶'}</td>
+      <td style="font-weight:600;">${escH(p.nombre)}</td>
+      <td>${escH(p.doc)}</td>
+      <td>${escH(p.especialidad)}</td>
+      <td style="text-align:center;font-weight:700;">${p.atenciones.toLocaleString()}</td>
+      <td style="text-align:center;">${p.numPacientes}</td>
+      <td style="text-align:center;">${p.horas>0?p.horas.toLocaleString():'—'}</td>
+      <td style="text-align:center;">${p.numDias}</td>
+    </tr>`;
+    if(isOpen){
+      // Detalle agrupado por paciente: cada paciente con sus fechas/horas de atención
+      const porPac={};
+      p.registros.forEach(x=>{
+        const pk=x.pacDoc||x.pacNombre;
+        if(!porPac[pk])porPac[pk]={nombre:x.pacNombre,doc:x.pacDoc,regs:[]};
+        porPac[pk].regs.push(x);
+      });
+      const pacs=Object.values(porPac).sort((a,b)=>b.regs.length-a.regs.length);
+      pacs.forEach(pa=>pa.regs.sort((a,b)=>{
+        const fa=parseDateForSort(a.fecha),fb=parseDateForSort(b.fecha);
+        if(fa!==fb)return fa-fb;
+        return a.hora.localeCompare(b.hora);
+      }));
+      html+=`<tr><td colspan="8" style="background:#F6F9FD;padding:14px 20px;">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;">
+          <div style="background:#fff;border:2px solid var(--brand);border-radius:10px;padding:10px 14px;text-align:center;">
+            <div style="font-size:11px;font-weight:700;color:var(--brand);">📋 ATENCIONES</div>
+            <div style="font-size:26px;font-weight:800;color:var(--brand);">${p.atenciones.toLocaleString()}</div>
+          </div>
+          <div style="background:#fff;border:2px solid #548235;border-radius:10px;padding:10px 14px;text-align:center;">
+            <div style="font-size:11px;font-weight:700;color:#548235;">👥 PACIENTES</div>
+            <div style="font-size:26px;font-weight:800;color:#548235;">${p.numPacientes.toLocaleString()}</div>
+          </div>
+          <div style="background:#fff;border:2px solid #ED7D31;border-radius:10px;padding:10px 14px;text-align:center;">
+            <div style="font-size:11px;font-weight:700;color:#ED7D31;">⏱️ HORAS MARCADAS</div>
+            <div style="font-size:26px;font-weight:800;color:#ED7D31;">${p.horas>0?p.horas.toLocaleString():'0'}</div>
+            <div style="font-size:10px;color:var(--muted);">en ${p.atenConHoras} de ${p.atenciones} atenciones</div>
+          </div>
+          <div style="background:#fff;border:2px solid #7030A0;border-radius:10px;padding:10px 14px;text-align:center;">
+            <div style="font-size:11px;font-weight:700;color:#7030A0;">📅 DÍAS TRABAJADOS</div>
+            <div style="font-size:26px;font-weight:800;color:#7030A0;">${p.numDias.toLocaleString()}</div>
+          </div>
+        </div>
+        <div style="font-weight:700;font-size:12px;color:var(--brand);margin-bottom:6px;">👥 PACIENTES ATENDIDOS (${pacs.length}) — fechas y horas de cada atención</div>
+        <div style="max-height:400px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;">
+        <table style="font-size:12px;"><thead><tr>
+          <th>Fecha</th><th>Hora</th><th>Adm.</th>
+          <th>Procedimiento / Servicio</th><th style="text-align:center;">Jornada (hrs)</th>
+        </tr></thead><tbody>
+        ${pacs.map(pa=>{
+          const horasPac=pa.regs.reduce((s,x)=>s+(x.jornada!==''?x.jornada:0),0);
+          return `<tr><td colspan="5" style="background:var(--brand);color:#fff;font-weight:700;padding:5px 10px;">
+            👤 ${escH(pa.nombre)}${pa.doc?' · CC '+escH(pa.doc):''} — ${pa.regs.length} atenciones${horasPac>0?' · '+horasPac+' hrs marcadas':''}
+          </td></tr>`+
+          pa.regs.map(x=>`<tr>
+            <td>${escH(x.fecha)}</td>
+            <td>${escH(x.hora)}</td>
+            <td>${escH(x.adm)}</td>
+            <td>${escH(x.cup)}</td>
+            <td style="text-align:center;font-weight:700;">${x.jornada!==''?x.jornada:''}</td>
+          </tr>`).join('');
+        }).join('')}
+        </tbody></table>
+        </div>
+        <div style="margin-top:8px;font-size:11px;color:var(--muted);">
+          📅 Periodo: ${escH(p.fechaMin)} → ${escH(p.fechaMax)} · 🏢 ${p.clientesList.map(escH).join(', ')} ·
+          ⏱️ Total horas marcadas: <b>${p.horas>0?p.horas:'0'}</b> (en ${p.atenConHoras} de ${p.atenciones} atenciones)
+        </div>
+      </td></tr>`;
+    }
+  });
+
+  // Totales
+  html+=`</tbody><tfoot><tr>
+    <td colspan="4" style="font-weight:700;">TOTAL (${profs.length} profesionales)</td>
+    <td style="text-align:center;font-weight:700;">${totAten.toLocaleString()}</td>
+    <td style="text-align:center;font-weight:700;">${allPacs.size.toLocaleString()}</td>
+    <td style="text-align:center;font-weight:700;">${totHoras.toLocaleString()}</td>
+    <td></td>
+  </tr></tfoot></table></div>`;
+  cont.innerHTML=html;
+}
+
+function rrToggle(key){
+  if(rrExpanded.has(key))rrExpanded.delete(key);else rrExpanded.add(key);
+  rrRender();
+}
+
+function rrClearAll(){
+  rrData=null;rrExpanded=new Set();
+  document.getElementById('rrFileChips').innerHTML='';
+  document.getElementById('rrFiltersPanel').style.display='none';
+  document.getElementById('rrActionsPanel').style.display='none';
+  document.getElementById('rrBanner').style.display='none';
+  document.getElementById('rrCount').textContent='Sin datos';
+  ['rrStatProfs','rrStatAten','rrStatPacs','rrStatHoras'].forEach(id=>document.getElementById(id).textContent='—');
+  document.getElementById('rrTableContainer').innerHTML=`<div class="empty-state">
+    <div class="empty-icon">🧑‍⚕️</div><div class="empty-text">Carga el archivo Indicador para comenzar</div></div>`;
+}
+
+async function rrExportExcel(){
+  if(!rrData){showToast('No hay datos para exportar','error');return;}
+  const profs=rrGetFilteredProfs().sort((a,b)=>{
+    if(a.especialidad!==b.especialidad)return a.especialidad.localeCompare(b.especialidad,'es');
+    return b.atenciones-a.atenciones;
+  });
+  if(!profs.length){showToast('Ningún profesional con los filtros actuales','error');return;}
+
+  const wb=new ExcelJS.Workbook();
+  const ws=wb.addWorksheet('Resumen Profesionales',{
+    properties:{tabColor:{argb:'FF7030A0'}},
+    pageSetup:{orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0},
+    views:[{state:'frozen',ySplit:4}],
+  });
+  const W=[38,15,26,12,12,10,10,44];
+  W.forEach((w,i)=>ws.getColumn(i+1).width=w);
+  const NUM=W.length;
+
+  // Título
+  ws.mergeCells(1,1,1,NUM);
+  let c=ws.getCell(1,1);
+  c.value='CONSOLIDADO DE TRABAJO POR PROFESIONAL — RECURSOS HUMANOS';
+  c.font={name:'Arial',size:14,bold:true,color:{argb:COLORS.white}};
+  c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF7030A0'}};
+  c.alignment={horizontal:'center',vertical:'middle'};
+  ws.getRow(1).height=28;
+  ws.mergeCells(2,1,2,NUM);
+  c=ws.getCell(2,1);
+  c.value='Periodo: '+rrData.fechaMin+' → '+rrData.fechaMax+' · Archivo: '+rrData.fileName+
+    (rrFiltros.especialidad?' · Especialidad: '+rrFiltros.especialidad:'')+
+    (rrFiltros.cliente?' · Cliente: '+rrFiltros.cliente:'');
+  c.font={name:'Arial',size:10,color:{argb:'FF444444'}};
+  c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFEFE5F7'}};
+  c.alignment={horizontal:'center',vertical:'middle'};
+  ws.getRow(2).height=17;
+  ws.getRow(3).height=5;
+
+  // Encabezados
+  const HDRS=['PROFESIONAL','DOCUMENTO','ESPECIALIDAD','ATENCIONES','PACIENTES','HORAS','DÍAS','PRINCIPAL TIPO DE ATENCIÓN'];
+  HDRS.forEach((h,i)=>{
+    const cc=ws.getCell(4,i+1);
+    cc.value=h;
+    cc.font={name:'Arial',size:10,bold:true,color:{argb:COLORS.white}};
+    cc.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF1F4E78'}};
+    cc.alignment={horizontal:'center',vertical:'middle',wrapText:true};
+    cc.border=thinBorder();
+  });
+  ws.getRow(4).height=26;
+
+  let cr=5;
+  let espActual=null,espStart=0;
+  const espRefs=[];
+  const closeEsp=()=>{
+    if(espActual===null)return;
+    // Subtotal de especialidad
+    for(let ci=1;ci<=NUM;ci++){
+      const sc=ws.getCell(cr,ci);
+      sc.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFE2EFDA'}};
+      sc.border=thinBorder();sc.font={name:'Arial',size:10,bold:true};
+    }
+    ws.mergeCells(cr,1,cr,3);
+    ws.getCell(cr,1).value='Subtotal '+espActual;
+    ws.getCell(cr,1).alignment={horizontal:'right',vertical:'middle'};
+    [4,5,6].forEach(ci=>{
+      const sc=ws.getCell(cr,ci);
+      sc.value={formula:`SUM(${colLetter(ci)}${espStart}:${colLetter(ci)}${cr-1})`};
+      sc.numFmt='#,##0';sc.alignment={horizontal:'center',vertical:'middle'};
+    });
+    espRefs.push({4:colLetter(4)+cr,5:colLetter(5)+cr,6:colLetter(6)+cr});
+    ws.getRow(cr).height=16;cr++;
+  };
+
+  profs.forEach(p=>{
+    if(p.especialidad!==espActual){
+      closeEsp();
+      // Encabezado de especialidad
+      ws.mergeCells(cr,1,cr,NUM);
+      const ec=ws.getCell(cr,1);
+      ec.value=p.especialidad;
+      ec.font={name:'Arial',size:11,bold:true,color:{argb:COLORS.white}};
+      ec.fill={type:'pattern',pattern:'solid',fgColor:{argb:COLORS.secondary}};
+      ec.alignment={horizontal:'left',vertical:'middle'};
+      ws.getRow(cr).height=19;cr++;
+      espActual=p.especialidad;espStart=cr;
+    }
+    const topCup=Object.entries(p.cups).sort((a,b)=>b[1]-a[1])[0];
+    const vals=[p.nombre,p.doc,p.especialidad,p.atenciones,p.numPacientes,p.horas>0?p.horas:null,p.numDias,
+      topCup?topCup[0]+' ('+topCup[1]+')':''];
+    vals.forEach((v,i)=>{
+      const cc=ws.getCell(cr,i+1);
+      cc.value=v;
+      cc.font={name:'Arial',size:10};cc.border=thinBorder();
+      if(i>=3&&i<=6){cc.numFmt='#,##0';cc.alignment={horizontal:'center',vertical:'middle'};}
+      else cc.alignment={horizontal:'left',vertical:'middle'};
+    });
+    cr++;
+  });
+  closeEsp();
+
+  // Total general
+  cr++;
+  for(let ci=1;ci<=NUM;ci++){
+    const tc=ws.getCell(cr,ci);
+    tc.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF1F3864'}};
+    tc.border=thinBorder();tc.font={name:'Arial',size:11,bold:true,color:{argb:COLORS.white}};
+  }
+  ws.mergeCells(cr,1,cr,3);
+  ws.getCell(cr,1).value='TOTAL GENERAL ('+profs.length+' profesionales)';
+  ws.getCell(cr,1).alignment={horizontal:'right',vertical:'middle'};
+  [4,5,6].forEach(ci=>{
+    const tc=ws.getCell(cr,ci);
+    tc.value=espRefs.length?{formula:espRefs.map(r=>r[ci]).join('+')}:0;
+    tc.numFmt='#,##0';tc.alignment={horizontal:'center',vertical:'middle'};
+    tc.font={name:'Arial',size:11,bold:true,color:{argb:'FFFFFF00'}};
+  });
+  ws.getRow(cr).height=22;
+
+  // ── Hoja 2: detalle atención por atención (tal cual el archivo) ──
+  const ws2=wb.addWorksheet('Detalle de Atenciones',{
+    properties:{tabColor:{argb:'FF2E75B6'}},
+    views:[{state:'frozen',ySplit:1}],
+  });
+  const H2=['PROFESIONAL','DOC. PROFESIONAL','ESPECIALIDAD','FECHA','HORA','ADMISIÓN','PACIENTE','DOC. PACIENTE','PROCEDIMIENTO / SERVICIO','JORNADA (HRS)','CLIENTE'];
+  const W2=[34,15,22,12,9,10,28,14,48,12,34];
+  W2.forEach((w,i)=>ws2.getColumn(i+1).width=w);
+  H2.forEach((h,i)=>{
+    const cc=ws2.getCell(1,i+1);
+    cc.value=h;cc.font={name:'Arial',size:10,bold:true,color:{argb:COLORS.white}};
+    cc.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF1F4E78'}};
+    cc.alignment={horizontal:'center',vertical:'middle'};cc.border=thinBorder();
+  });
+  let cr2=2;
+  profs.forEach(p=>{
+    const regs=[...p.registros].sort((a,b)=>{
+      const fa=parseDateForSort(a.fecha),fb=parseDateForSort(b.fecha);
+      if(fa!==fb)return fa-fb;
+      return a.hora.localeCompare(b.hora);
+    });
+    const profStart=cr2;
+    regs.forEach(x=>{
+      [p.nombre,p.doc,p.especialidad,x.fecha,x.hora,x.adm,x.pacNombre,x.pacDoc,x.cup,x.jornada!==''?x.jornada:null,x.cliente].forEach((v,i)=>{
+        const cc=ws2.getCell(cr2,i+1);
+        cc.value=v;cc.font={name:'Arial',size:10};cc.border=thinBorder();
+        if(i===9){cc.numFmt='0';cc.alignment={horizontal:'center'};}
+        else if(i===3||i===4||i===5){cc.alignment={horizontal:'center'};}
+      });
+      cr2++;
+    });
+    // Subtotal del profesional: atenciones + suma de jornadas
+    for(let ci=1;ci<=H2.length;ci++){
+      const sc=ws2.getCell(cr2,ci);
+      sc.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFFF2CC'}};
+      sc.border=thinBorder();sc.font={name:'Arial',size:10,bold:true};
+    }
+    ws2.mergeCells(cr2,1,cr2,8);
+    ws2.getCell(cr2,1).value='Subtotal '+p.nombre+' — '+regs.length+' atenciones';
+    ws2.getCell(cr2,1).alignment={horizontal:'right',vertical:'middle'};
+    const jc=ws2.getCell(cr2,10);
+    jc.value={formula:`SUM(J${profStart}:J${cr2-1})`};
+    jc.numFmt='0';jc.alignment={horizontal:'center'};
+    cr2++;
+  });
+
+  const buf=await wb.xlsx.writeBuffer();
+  const fecha=new Date().toISOString().substring(0,10);
+  saveAs(new Blob([buf]),'RRHH_Consolidado_Profesionales_'+fecha+'.xlsx');
+  showToast('Excel exportado: '+profs.length+' profesionales en 2 hojas','success');
+}
+
+document.addEventListener('DOMContentLoaded',rrInit);
+
 function showToast(msg,type='info'){
   const w=document.getElementById('toastWrap');
   const d=document.createElement('div');
