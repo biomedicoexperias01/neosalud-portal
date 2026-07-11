@@ -89,9 +89,14 @@ a{text-decoration:none;color:inherit;}
 .area-badge.soon{background:#fef3c7;color:#92400e;}
 
 /* ─── FACTURACIÓN APP ───────────────────────────────────── */
-.app-wrap{max-width:1280px;margin:0 auto;padding:24px 20px;}
-.app-layout{display:grid;grid-template-columns:320px 1fr;gap:20px;align-items:start;}
+.app-wrap{max-width:1600px;margin:0 auto;padding:24px 20px;}
+.app-layout{display:grid;grid-template-columns:300px minmax(0,1fr);gap:20px;align-items:start;}
+@media(max-width:1100px){.app-layout{grid-template-columns:260px minmax(0,1fr);}}
 @media(max-width:960px){.app-layout{grid-template-columns:1fr;}}
+/* RRHH: textos largos se envuelven en vez de forzar scroll horizontal */
+#view-rrhh tbody td{white-space:normal;word-break:break-word;}
+#view-rrhh .table-wrap{max-height:none;}
+.rr-kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px;}
 
 /* ─── LEFT PANEL ─────────────────────────────────────────── */
 .panel{background:var(--card);border-radius:var(--radius);border:1px solid var(--border);
@@ -2580,7 +2585,7 @@ function rrRender(){
         return a.hora.localeCompare(b.hora);
       }));
       html+=`<tr><td colspan="8" style="background:#F6F9FD;padding:14px 20px;">
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;">
+        <div class="rr-kpi-grid">
           <div style="background:#fff;border:2px solid var(--brand);border-radius:10px;padding:10px 14px;text-align:center;">
             <div style="font-size:11px;font-weight:700;color:var(--brand);">📋 ATENCIONES</div>
             <div style="font-size:26px;font-weight:800;color:var(--brand);">${p.atenciones.toLocaleString()}</div>
@@ -2603,18 +2608,20 @@ function rrRender(){
         <div style="max-height:400px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;">
         <table style="font-size:12px;"><thead><tr>
           <th>Fecha</th><th>Hora</th><th>Adm.</th>
-          <th>Procedimiento / Servicio</th><th style="text-align:center;">Jornada (hrs)</th>
+          <th>Procedimiento / Servicio</th><th>Cliente</th><th style="text-align:center;">Jornada (hrs)</th>
         </tr></thead><tbody>
         ${pacs.map(pa=>{
           const horasPac=pa.regs.reduce((s,x)=>s+(x.jornada!==''?x.jornada:0),0);
-          return `<tr><td colspan="5" style="background:var(--brand);color:#fff;font-weight:700;padding:5px 10px;">
-            👤 ${escH(pa.nombre)}${pa.doc?' · CC '+escH(pa.doc):''} — ${pa.regs.length} atenciones${horasPac>0?' · '+horasPac+' hrs marcadas':''}
+          const cliPac=[...new Set(pa.regs.map(x=>x.cliente).filter(Boolean))].join(' / ');
+          return `<tr><td colspan="6" style="background:var(--brand);color:#fff;font-weight:700;padding:5px 10px;">
+            👤 ${escH(pa.nombre)}${pa.doc?' · CC '+escH(pa.doc):''} — ${pa.regs.length} atenciones${horasPac>0?' · '+horasPac+' hrs marcadas':''}${cliPac?' · 🏢 '+escH(cliPac):''}
           </td></tr>`+
           pa.regs.map(x=>`<tr>
-            <td>${escH(x.fecha)}</td>
-            <td>${escH(x.hora)}</td>
-            <td>${escH(x.adm)}</td>
+            <td style="white-space:nowrap;">${escH(x.fecha)}</td>
+            <td style="white-space:nowrap;">${escH(x.hora)}</td>
+            <td style="white-space:nowrap;">${escH(x.adm)}</td>
             <td>${escH(x.cup)}</td>
+            <td>${escH(x.cliente)}</td>
             <td style="text-align:center;font-weight:700;">${x.jornada!==''?x.jornada:''}</td>
           </tr>`).join('');
         }).join('')}
@@ -2658,171 +2665,154 @@ function rrClearAll(){
 
 async function rrExportExcel(){
   if(!rrData){showToast('No hay datos para exportar','error');return;}
-  const profs=rrGetFilteredProfs().sort((a,b)=>{
-    if(a.especialidad!==b.especialidad)return a.especialidad.localeCompare(b.especialidad,'es');
-    return b.atenciones-a.atenciones;
-  });
+  const profs=rrGetFilteredProfs().sort((a,b)=>b.atenciones-a.atenciones);
   if(!profs.length){showToast('Ningún profesional con los filtros actuales','error');return;}
 
+  const totAten=profs.reduce((s,p)=>s+p.atenciones,0);
+  const totHoras=profs.reduce((s,p)=>s+p.horas,0);
+  const allPacs=new Set();profs.forEach(p=>p.pacientes.forEach(x=>allPacs.add(x)));
+
   const wb=new ExcelJS.Workbook();
-  const ws=wb.addWorksheet('Resumen Profesionales',{
+  const ws=wb.addWorksheet('Consolidado RRHH',{
     properties:{tabColor:{argb:'FF7030A0'}},
     pageSetup:{orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0},
-    views:[{state:'frozen',ySplit:4}],
   });
-  const W=[38,15,26,12,12,10,10,44];
+  // 6 columnas: Fecha | Hora | Adm. | Procedimiento | Cliente | Jornada
+  const W=[13,10,10,56,34,12];
   W.forEach((w,i)=>ws.getColumn(i+1).width=w);
   const NUM=W.length;
 
-  // Título
-  ws.mergeCells(1,1,1,NUM);
-  let c=ws.getCell(1,1);
-  c.value='CONSOLIDADO DE TRABAJO POR PROFESIONAL — RECURSOS HUMANOS';
-  c.font={name:'Arial',size:14,bold:true,color:{argb:COLORS.white}};
-  c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF7030A0'}};
-  c.alignment={horizontal:'center',vertical:'middle'};
-  ws.getRow(1).height=28;
-  ws.mergeCells(2,1,2,NUM);
-  c=ws.getCell(2,1);
-  c.value='Periodo: '+rrData.fechaMin+' → '+rrData.fechaMax+' · Archivo: '+rrData.fileName+
-    (rrFiltros.especialidad?' · Especialidad: '+rrFiltros.especialidad:'')+
-    (rrFiltros.cliente?' · Cliente: '+rrFiltros.cliente:'');
-  c.font={name:'Arial',size:10,color:{argb:'FF444444'}};
-  c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFEFE5F7'}};
-  c.alignment={horizontal:'center',vertical:'middle'};
-  ws.getRow(2).height=17;
-  ws.getRow(3).height=5;
-
-  // Encabezados
-  const HDRS=['PROFESIONAL','DOCUMENTO','ESPECIALIDAD','ATENCIONES','PACIENTES','HORAS','DÍAS','PRINCIPAL TIPO DE ATENCIÓN'];
-  HDRS.forEach((h,i)=>{
-    const cc=ws.getCell(4,i+1);
-    cc.value=h;
-    cc.font={name:'Arial',size:10,bold:true,color:{argb:COLORS.white}};
-    cc.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF1F4E78'}};
-    cc.alignment={horizontal:'center',vertical:'middle',wrapText:true};
-    cc.border=thinBorder();
-  });
-  ws.getRow(4).height=26;
-
-  let cr=5;
-  let espActual=null,espStart=0;
-  const espRefs=[];
-  const closeEsp=()=>{
-    if(espActual===null)return;
-    // Subtotal de especialidad
-    for(let ci=1;ci<=NUM;ci++){
-      const sc=ws.getCell(cr,ci);
-      sc.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFE2EFDA'}};
-      sc.border=thinBorder();sc.font={name:'Arial',size:10,bold:true};
-    }
-    ws.mergeCells(cr,1,cr,3);
-    ws.getCell(cr,1).value='Subtotal '+espActual;
-    ws.getCell(cr,1).alignment={horizontal:'right',vertical:'middle'};
-    [4,5,6].forEach(ci=>{
-      const sc=ws.getCell(cr,ci);
-      sc.value={formula:`SUM(${colLetter(ci)}${espStart}:${colLetter(ci)}${cr-1})`};
-      sc.numFmt='#,##0';sc.alignment={horizontal:'center',vertical:'middle'};
-    });
-    espRefs.push({4:colLetter(4)+cr,5:colLetter(5)+cr,6:colLetter(6)+cr});
-    ws.getRow(cr).height=16;cr++;
+  let cr=1;
+  const band=(val,bg,fg,size,bold,h,align)=>{
+    ws.mergeCells(cr,1,cr,NUM);
+    const c=ws.getCell(cr,1);
+    c.value=val;
+    c.font={name:'Arial',size:size||10,bold:!!bold,color:{argb:fg||'FF000000'}};
+    if(bg)c.fill={type:'pattern',pattern:'solid',fgColor:{argb:bg}};
+    c.alignment={horizontal:align||'center',vertical:'middle',wrapText:true};
+    ws.getRow(cr).height=h||16;
+    cr++;
   };
 
-  profs.forEach(p=>{
-    if(p.especialidad!==espActual){
-      closeEsp();
-      // Encabezado de especialidad
-      ws.mergeCells(cr,1,cr,NUM);
-      const ec=ws.getCell(cr,1);
-      ec.value=p.especialidad;
-      ec.font={name:'Arial',size:11,bold:true,color:{argb:COLORS.white}};
-      ec.fill={type:'pattern',pattern:'solid',fgColor:{argb:COLORS.secondary}};
-      ec.alignment={horizontal:'left',vertical:'middle'};
-      ws.getRow(cr).height=19;cr++;
-      espActual=p.especialidad;espStart=cr;
-    }
-    const topCup=Object.entries(p.cups).sort((a,b)=>b[1]-a[1])[0];
-    const vals=[p.nombre,p.doc,p.especialidad,p.atenciones,p.numPacientes,p.horas>0?p.horas:null,p.numDias,
-      topCup?topCup[0]+' ('+topCup[1]+')':''];
-    vals.forEach((v,i)=>{
+  // ─── Encabezado general (como el banner de la app) ───
+  band('CONSOLIDADO DE PROFESIONALES — RECURSOS HUMANOS','FF1F3864',COLORS.white,15,true,30);
+  band('Periodo: '+rrData.fechaMin+' → '+rrData.fechaMax+' · '+rrData.fileName+
+    (rrFiltros.especialidad?' · Especialidad: '+rrFiltros.especialidad:'')+
+    (rrFiltros.cliente?' · Cliente: '+rrFiltros.cliente:''),'FFD9E1F2','FF444444',10,false,16);
+  ws.getRow(cr).height=5;cr++;
+
+  // ─── Banda KPI global (como las tarjetas de la app) ───
+  const KPIS=[
+    {c1:1,c2:2,lbl:'🧑‍⚕️ PROFESIONALES',val:profs.length,dark:'FF1F4E78',light:'FFDCE9F7'},
+    {c1:3,c2:3,lbl:'📋 ATENCIONES',val:totAten,dark:'FF375623',light:'FFE2EFDA'},
+    {c1:4,c2:4,lbl:'👥 PACIENTES ÚNICOS',val:allPacs.size,dark:'FF833C00',light:'FFFCE4D6'},
+    {c1:5,c2:6,lbl:'⏱️ HORAS REGISTRADAS',val:totHoras,dark:'FF3B2E58',light:'FFE5DFF2'},
+  ];
+  KPIS.forEach(k=>{
+    if(k.c2>k.c1)ws.mergeCells(cr,k.c1,cr,k.c2);
+    const c=ws.getCell(cr,k.c1);
+    c.value=k.lbl;
+    c.font={name:'Arial',size:10,bold:true,color:{argb:COLORS.white}};
+    c.fill={type:'pattern',pattern:'solid',fgColor:{argb:k.dark}};
+    c.alignment={horizontal:'center',vertical:'middle'};c.border=thinBorder();
+  });
+  ws.getRow(cr).height=18;cr++;
+  KPIS.forEach(k=>{
+    if(k.c2>k.c1)ws.mergeCells(cr,k.c1,cr,k.c2);
+    const c=ws.getCell(cr,k.c1);
+    c.value=k.val;
+    c.font={name:'Arial',size:18,bold:true,color:{argb:k.dark}};
+    c.fill={type:'pattern',pattern:'solid',fgColor:{argb:k.light}};
+    c.alignment={horizontal:'center',vertical:'middle'};c.border=thinBorder();
+  });
+  ws.getRow(cr).height=30;cr++;
+  ws.getRow(cr).height=8;cr++;
+
+  // ─── Cada profesional: como se ve en la app al expandir ───
+  profs.forEach((p,pi)=>{
+    // Barra del profesional
+    band('🧑‍⚕️ '+p.nombre+'   ·   CC '+p.doc+'   ·   '+p.especialidad,'FF7030A0',COLORS.white,12,true,22,'left');
+    // Mini resumen del profesional (como las 4 tarjetas)
+    band('📋 '+p.atenciones+' atenciones      👥 '+p.numPacientes+' pacientes      ⏱️ '+
+      (p.horas>0?p.horas:'0')+' horas marcadas (en '+p.atenConHoras+' atenciones)      📅 '+
+      p.numDias+' días trabajados','FFEFE5F7','FF3B2E58',10,true,17,'left');
+
+    // Encabezado de columnas
+    ['FECHA','HORA','ADM.','PROCEDIMIENTO / SERVICIO','CLIENTE','JORNADA (HRS)'].forEach((h,i)=>{
       const cc=ws.getCell(cr,i+1);
-      cc.value=v;
-      cc.font={name:'Arial',size:10};cc.border=thinBorder();
-      if(i>=3&&i<=6){cc.numFmt='#,##0';cc.alignment={horizontal:'center',vertical:'middle'};}
-      else cc.alignment={horizontal:'left',vertical:'middle'};
+      cc.value=h;
+      cc.font={name:'Arial',size:9,bold:true,color:{argb:COLORS.white}};
+      cc.fill={type:'pattern',pattern:'solid',fgColor:{argb:COLORS.grey}};
+      cc.alignment={horizontal:'center',vertical:'middle'};cc.border=thinBorder();
     });
-    cr++;
-  });
-  closeEsp();
+    ws.getRow(cr).height=15;cr++;
 
-  // Total general
-  cr++;
-  for(let ci=1;ci<=NUM;ci++){
-    const tc=ws.getCell(cr,ci);
-    tc.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF1F3864'}};
-    tc.border=thinBorder();tc.font={name:'Arial',size:11,bold:true,color:{argb:COLORS.white}};
-  }
-  ws.mergeCells(cr,1,cr,3);
-  ws.getCell(cr,1).value='TOTAL GENERAL ('+profs.length+' profesionales)';
-  ws.getCell(cr,1).alignment={horizontal:'right',vertical:'middle'};
-  [4,5,6].forEach(ci=>{
-    const tc=ws.getCell(cr,ci);
-    tc.value=espRefs.length?{formula:espRefs.map(r=>r[ci]).join('+')}:0;
-    tc.numFmt='#,##0';tc.alignment={horizontal:'center',vertical:'middle'};
-    tc.font={name:'Arial',size:11,bold:true,color:{argb:'FFFFFF00'}};
-  });
-  ws.getRow(cr).height=22;
-
-  // ── Hoja 2: detalle atención por atención (tal cual el archivo) ──
-  const ws2=wb.addWorksheet('Detalle de Atenciones',{
-    properties:{tabColor:{argb:'FF2E75B6'}},
-    views:[{state:'frozen',ySplit:1}],
-  });
-  const H2=['PROFESIONAL','DOC. PROFESIONAL','ESPECIALIDAD','FECHA','HORA','ADMISIÓN','PACIENTE','DOC. PACIENTE','PROCEDIMIENTO / SERVICIO','JORNADA (HRS)','CLIENTE'];
-  const W2=[34,15,22,12,9,10,28,14,48,12,34];
-  W2.forEach((w,i)=>ws2.getColumn(i+1).width=w);
-  H2.forEach((h,i)=>{
-    const cc=ws2.getCell(1,i+1);
-    cc.value=h;cc.font={name:'Arial',size:10,bold:true,color:{argb:COLORS.white}};
-    cc.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF1F4E78'}};
-    cc.alignment={horizontal:'center',vertical:'middle'};cc.border=thinBorder();
-  });
-  let cr2=2;
-  profs.forEach(p=>{
-    const regs=[...p.registros].sort((a,b)=>{
-      const fa=parseDateForSort(a.fecha),fb=parseDateForSort(b.fecha);
-      if(fa!==fb)return fa-fb;
-      return a.hora.localeCompare(b.hora);
+    // Agrupar por paciente (mismo orden que la app: más atendido primero)
+    const porPac={};
+    p.registros.forEach(x=>{
+      const pk=x.pacDoc||x.pacNombre;
+      if(!porPac[pk])porPac[pk]={nombre:x.pacNombre,doc:x.pacDoc,regs:[]};
+      porPac[pk].regs.push(x);
     });
-    const profStart=cr2;
-    regs.forEach(x=>{
-      [p.nombre,p.doc,p.especialidad,x.fecha,x.hora,x.adm,x.pacNombre,x.pacDoc,x.cup,x.jornada!==''?x.jornada:null,x.cliente].forEach((v,i)=>{
-        const cc=ws2.getCell(cr2,i+1);
-        cc.value=v;cc.font={name:'Arial',size:10};cc.border=thinBorder();
-        if(i===9){cc.numFmt='0';cc.alignment={horizontal:'center'};}
-        else if(i===3||i===4||i===5){cc.alignment={horizontal:'center'};}
+    const pacs=Object.values(porPac).sort((a,b)=>b.regs.length-a.regs.length);
+    const profStart=cr;
+    let firstDataRow=null,lastDataRow=null;
+    const jornCol=6;
+
+    pacs.forEach(pa=>{
+      pa.regs.sort((a,b)=>{
+        const fa=parseDateForSort(a.fecha),fb=parseDateForSort(b.fecha);
+        if(fa!==fb)return fa-fb;
+        return a.hora.localeCompare(b.hora);
       });
-      cr2++;
+      const horasPac=pa.regs.reduce((s,x)=>s+(x.jornada!==''?x.jornada:0),0);
+      // Barra del paciente
+      ws.mergeCells(cr,1,cr,NUM);
+      const pc=ws.getCell(cr,1);
+      pc.value='👤 '+pa.nombre+(pa.doc?' · CC '+pa.doc:'')+' — '+pa.regs.length+' atenciones'+(horasPac>0?' · '+horasPac+' hrs marcadas':'');
+      pc.font={name:'Arial',size:10,bold:true,color:{argb:COLORS.white}};
+      pc.fill={type:'pattern',pattern:'solid',fgColor:{argb:COLORS.secondary}};
+      pc.alignment={horizontal:'left',vertical:'middle'};
+      ws.getRow(cr).height=17;cr++;
+      // Atenciones del paciente
+      pa.regs.forEach((x,ri)=>{
+        if(firstDataRow===null)firstDataRow=cr;
+        lastDataRow=cr;
+        const vals=[x.fecha,x.hora,x.adm,x.cup,x.cliente,x.jornada!==''?x.jornada:null];
+        vals.forEach((v,i)=>{
+          const cc=ws.getCell(cr,i+1);
+          cc.value=v;cc.font={name:'Arial',size:9};cc.border=thinBorder();
+          if(ri%2===1)cc.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFF5F5F5'}};
+          if(i===5){cc.numFmt='0';cc.alignment={horizontal:'center',vertical:'middle'};}
+          else if(i<=2){cc.alignment={horizontal:'center',vertical:'middle'};}
+          else cc.alignment={horizontal:'left',vertical:'middle',wrapText:true};
+        });
+        cr++;
+      });
     });
-    // Subtotal del profesional: atenciones + suma de jornadas
-    for(let ci=1;ci<=H2.length;ci++){
-      const sc=ws2.getCell(cr2,ci);
+
+    // Subtotal del profesional (fórmula sobre el bloque)
+    for(let ci=1;ci<=NUM;ci++){
+      const sc=ws.getCell(cr,ci);
       sc.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFFF2CC'}};
       sc.border=thinBorder();sc.font={name:'Arial',size:10,bold:true};
     }
-    ws2.mergeCells(cr2,1,cr2,8);
-    ws2.getCell(cr2,1).value='Subtotal '+p.nombre+' — '+regs.length+' atenciones';
-    ws2.getCell(cr2,1).alignment={horizontal:'right',vertical:'middle'};
-    const jc=ws2.getCell(cr2,10);
-    jc.value={formula:`SUM(J${profStart}:J${cr2-1})`};
-    jc.numFmt='0';jc.alignment={horizontal:'center'};
-    cr2++;
+    ws.mergeCells(cr,1,cr,NUM-1);
+    ws.getCell(cr,1).value='Subtotal '+p.nombre+' — '+p.atenciones+' atenciones · '+p.numPacientes+' pacientes';
+    ws.getCell(cr,1).alignment={horizontal:'right',vertical:'middle'};
+    if(firstDataRow!==null){
+      const jc=ws.getCell(cr,jornCol);
+      jc.value={formula:'SUM('+colLetter(jornCol)+firstDataRow+':'+colLetter(jornCol)+lastDataRow+')'};
+      jc.numFmt='0';jc.alignment={horizontal:'center',vertical:'middle'};
+    }
+    ws.getRow(cr).height=16;cr++;
+    ws.getRow(cr).height=6;cr++; // separador entre profesionales
   });
 
   const buf=await wb.xlsx.writeBuffer();
   const fecha=new Date().toISOString().substring(0,10);
-  saveAs(new Blob([buf]),'RRHH_Consolidado_Profesionales_'+fecha+'.xlsx');
-  showToast('Excel exportado: '+profs.length+' profesionales en 2 hojas','success');
+  saveAs(new Blob([buf]),'RRHH_Consolidado_'+fecha+'.xlsx');
+  showToast('Excel exportado: '+profs.length+' profesionales, formato visual','success');
 }
 
 document.addEventListener('DOMContentLoaded',rrInit);
