@@ -307,6 +307,23 @@ tfoot td.num{text-align:right;}
   background:#fff;border-radius:var(--radius);max-width:480px;width:100%;
   max-height:90vh;overflow:auto;box-shadow:0 20px 50px rgba(0,0,0,.3);
 }
+.modal-wide{max-width:920px;}
+.cc-section{font-size:12px;font-weight:700;color:#fff;background:var(--brand);
+  padding:7px 12px;border-radius:6px;margin:16px 0 10px;text-transform:uppercase;letter-spacing:.03em;}
+.cc-section:first-child{margin-top:0;}
+.cc-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 16px;}
+.cc-grid.cols3{grid-template-columns:1fr 1fr 1fr;}
+.cc-note{font-size:11px;color:var(--muted);background:var(--light);border:1px dashed var(--border);
+  border-radius:6px;padding:8px 10px;margin-top:6px;}
+.cc-table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:6px;}
+.cc-table th{background:var(--grey,#808080);color:#fff;padding:6px 8px;text-align:center;font-size:11px;}
+.cc-table td{padding:5px 8px;border-bottom:1px solid var(--border);}
+.cc-table input,.cc-table select{width:100%;padding:5px 6px;border:1px solid var(--border);border-radius:5px;font-size:12px;font-family:inherit;}
+.cc-total-box{background:var(--brand3);border:2px solid var(--brand);border-radius:8px;padding:12px 16px;
+  display:flex;justify-content:space-between;align-items:center;margin-top:8px;}
+.cc-total-box .lbl{font-weight:700;color:var(--brand);font-size:13px;}
+.cc-total-box .val{font-weight:800;color:var(--brand);font-size:22px;}
+.cc-letras{font-size:11px;color:var(--muted);margin-top:4px;font-style:italic;}
 .modal-head{
   background:linear-gradient(135deg,var(--brand),var(--brand2));
   color:#fff;padding:16px 22px;font-size:16px;font-weight:700;
@@ -694,6 +711,22 @@ tfoot td.num{text-align:right;}
     <div class="modal-body" id="modalBody"></div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal()">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── MODAL: Cuenta de Cobro (RRHH) ──────────────────────── -->
+<div class="modal-bg" id="ccModalBg">
+  <div class="modal modal-wide">
+    <div class="modal-head">
+      <span>🧾 Generar Cuenta de Cobro</span>
+      <button class="modal-close" onclick="rrCloseCC()">&times;</button>
+    </div>
+    <div class="modal-body" id="ccModalBody"></div>
+    <div class="modal-footer" style="flex-wrap:wrap;">
+      <button class="btn btn-secondary" onclick="rrCloseCC()">Cerrar</button>
+      <button class="btn btn-secondary" onclick="rrGenerarReporteServiciosExcel()">📋 Reporte de Servicios (Excel)</button>
+      <button class="btn btn-primary" onclick="rrGenerarCuentaCobroExcel()">📄 Cuenta de Cobro (Excel)</button>
     </div>
   </div>
 </div>
@@ -2444,6 +2477,7 @@ function rrBuildData(rows,fileName){
       adm:(r['ADMISION']||'').toString().trim(),
       pacNombre:nomPac,pacDoc:docPac,
       cup:cup,
+      cupsCode:(r['CUPS']||'').toString().trim(),
       jornada:(!isNaN(jl)&&jl>0)?jl:'',
       cliente:cli,
     });
@@ -2557,6 +2591,7 @@ function rrRender(){
     <th style="width:28px;"></th><th>Profesional</th><th>Documento</th><th>Especialidad</th>
     <th style="text-align:center;">Atenciones</th><th style="text-align:center;">Pacientes</th>
     <th style="text-align:center;">Horas</th><th style="text-align:center;">Días trab.</th>
+    <th style="text-align:center;">Acciones</th>
   </tr></thead><tbody>`;
 
   profs.forEach(p=>{
@@ -2571,6 +2606,9 @@ function rrRender(){
       <td style="text-align:center;">${p.numPacientes}</td>
       <td style="text-align:center;">${p.horas>0?p.horas.toLocaleString():'—'}</td>
       <td style="text-align:center;">${p.numDias}</td>
+      <td style="text-align:center;">
+        <span class="pill" style="font-size:11px;white-space:nowrap;" onclick="event.stopPropagation();rrOpenCC('${escH(key).replace(/'/g,"\\'")}')">🧾 Cuenta de cobro</span>
+      </td>
     </tr>`;
     if(isOpen){
       // Detalle agrupado por paciente: cada paciente con sus fechas/horas de atención
@@ -2586,7 +2624,7 @@ function rrRender(){
         if(fa!==fb)return fa-fb;
         return a.hora.localeCompare(b.hora);
       }));
-      html+=`<tr><td colspan="8" style="background:#F6F9FD;padding:14px 20px;">
+      html+=`<tr><td colspan="9" style="background:#F6F9FD;padding:14px 20px;">
         <div class="rr-kpi-grid">
           <div style="background:#fff;border:2px solid var(--brand);border-radius:10px;padding:10px 14px;text-align:center;">
             <div style="font-size:11px;font-weight:700;color:var(--brand);">📋 ATENCIONES</div>
@@ -2613,7 +2651,7 @@ function rrRender(){
         </div>
         <div style="max-height:420px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;">
         <table style="font-size:12px;"><thead><tr>
-          <th>Fecha</th><th>Hora</th><th>Adm.</th>
+          <th>Fecha</th><th>Hora</th><th>Adm.</th><th>CUPS</th>
           <th>Procedimiento / Servicio</th><th>Cliente</th><th style="text-align:center;">Jornada (hrs)</th>
         </tr></thead><tbody>
         ${pacs.map(pa=>{
@@ -2621,7 +2659,7 @@ function rrRender(){
           const cliPac=[...new Set(pa.regs.map(x=>x.cliente).filter(Boolean))].join(' / ');
           const pacKey=key+'||'+(pa.doc||pa.nombre);
           const pacOpen=rrPacExpanded.has(pacKey);
-          let bloque=`<tr><td colspan="6" style="background:var(--brand);color:#fff;font-weight:700;padding:5px 10px;cursor:pointer;"
+          let bloque=`<tr><td colspan="7" style="background:var(--brand);color:#fff;font-weight:700;padding:5px 10px;cursor:pointer;"
             onclick="event.stopPropagation();rrTogglePac('${escH(pacKey).replace(/'/g,"\\'")}')">
             <span style="display:inline-block;width:14px;">${pacOpen?'▼':'▶'}</span>
             👤 ${escH(pa.nombre)}${pa.doc?' · CC '+escH(pa.doc):''} — ${pa.regs.length} atenciones${horasPac>0?' · '+horasPac+' hrs marcadas':''}${cliPac?' · 🏢 '+escH(cliPac):''}
@@ -2631,6 +2669,7 @@ function rrRender(){
               <td style="white-space:nowrap;">${escH(x.fecha)}</td>
               <td style="white-space:nowrap;">${escH(x.hora)}</td>
               <td style="white-space:nowrap;">${escH(x.adm)}</td>
+              <td style="white-space:nowrap;font-weight:600;">${escH(x.cupsCode)}</td>
               <td>${escH(x.cup)}</td>
               <td>${escH(x.cliente)}</td>
               <td style="text-align:center;font-weight:700;">${x.jornada!==''?x.jornada:''}</td>
@@ -2655,6 +2694,7 @@ function rrRender(){
     <td style="text-align:center;font-weight:700;">${allPacs.size.toLocaleString()}</td>
     <td style="text-align:center;font-weight:700;">${totHoras.toLocaleString()}</td>
     <td></td>
+    <td></td>
   </tr></tfoot></table></div>`;
   cont.innerHTML=html;
 }
@@ -2677,8 +2717,531 @@ function rrPacKeysDe(profKey){
 function rrExpandAllPacs(profKey){rrPacKeysDe(profKey).forEach(k=>rrPacExpanded.add(k));rrRender();}
 function rrCollapseAllPacs(profKey){rrPacKeysDe(profKey).forEach(k=>rrPacExpanded.delete(k));rrRender();}
 
+// ═══════════════════════════════════════════════════════════
+// CUENTAS DE COBRO (RRHH) — tarifas, clasificación y persistencia
+// ═══════════════════════════════════════════════════════════
+function fmt$(n){
+  if(n===null||n===undefined||n==='')return'';
+  return '$'+Math.round(n).toLocaleString('es-CO');
+}
+
+const RR_TARIFAS_AUX={'6':45000,'8':60000,'12':90000,'24':180000};
+
+const RR_TARIFAS_PROF={
+  fisioterapeuta:{label:'FISIOTERAPEUTA',unidad:'TERAPIAS',urbana:15000,rural:20000},
+  respiratoria:{label:'TERAPIA RESPIRATORIA',unidad:'TERAPIAS',urbana:15000,rural:20000},
+  fonoaudiologia:{label:'FONOAUDIÓLOGO',unidad:'TERAPIAS',urbana:16000,rural:21000},
+  ocupacional:{label:'TERAPEUTA OCUPACIONAL',unidad:'TERAPIAS',urbana:16000,rural:21000},
+  psicologia:{label:'PSICÓLOGO',unidad:'SESIONES',urbana:20000,rural:25000},
+  trabajo_social:{label:'TRABAJADOR SOCIAL',unidad:'SESIONES',urbana:20000,rural:25000},
+  nutricion:{label:'NUTRICIONISTA',unidad:'CONSULTAS',urbana:22000,rural:22000,teleconsulta:22000},
+  enterostomal:{label:'TERAPIA ENTEROSTOMAL',unidad:'TERAPIAS',urbana:38000,rural:45000},
+};
+const RR_TARIFAS_MEDICO={urbana:45000,rural_vs:38000,rural_uzro:54000,rural_generico:50000,teleconsulta:38000};
+const RR_ZONA_LABELS={
+  urbana:'Urbana (Cali)',rural:'Rural',teleconsulta:'Teleconsulta',
+  rural_vs:'Rural: La Victoria / Sevilla',rural_uzro:'Rural: La Unión / Zarzal / Roldanillo / Obando',
+  rural_generico:'Rural: otro municipio (fuera de Cali)',
+};
+const RR_ZONA_CONCEPTO_LABEL={
+  urbana:'URBANA',rural:'RURAL',teleconsulta:'TELECONSULTA',
+  rural_vs:'RURAL',rural_uzro:'RURAL',rural_generico:'RURAL',
+};
+
+// Clasifica la especialidad del CSV en tipo de cobro (auxiliar por jornada / profesional o médico por sesión)
+function rrClasificar(especialidad){
+  const e=(especialidad||'').toUpperCase();
+  if(e.includes('CUIDADORA')||e.includes('ENFERMERIA'))return{tipo:'auxiliar',key:null};
+  if(e.includes('FISIOTERAP'))return{tipo:'profesional',key:'fisioterapeuta'};
+  if(e.includes('RESPIRATORIA'))return{tipo:'profesional',key:'respiratoria'};
+  if(e.includes('FONOAUDIO'))return{tipo:'profesional',key:'fonoaudiologia'};
+  if(e.includes('OCUPACIONAL'))return{tipo:'profesional',key:'ocupacional'};
+  if(e.includes('PSICOLOG'))return{tipo:'profesional',key:'psicologia'};
+  if(e.includes('TRABAJO SOCIAL'))return{tipo:'profesional',key:'trabajo_social'};
+  if(e.includes('NUTRIC'))return{tipo:'profesional',key:'nutricion'};
+  if(e.includes('ENTEROSTOMAL'))return{tipo:'profesional',key:'enterostomal'};
+  if(e.includes('MEDIC')||e.includes('CARDIOLOG'))return{tipo:'medico',key:'medico'};
+  return{tipo:'otro',key:null};
+}
+function rrZonasParaTipo(tipo,key){
+  if(tipo==='medico')return['urbana','rural_vs','rural_uzro','rural_generico','teleconsulta'];
+  if(tipo==='profesional'){
+    const base=['urbana','rural'];
+    if(RR_TARIFAS_PROF[key]&&RR_TARIFAS_PROF[key].teleconsulta!==undefined)base.push('teleconsulta');
+    return base;
+  }
+  return['urbana'];
+}
+function rrTarifaZona(tipo,key,zona){
+  if(tipo==='medico')return RR_TARIFAS_MEDICO[zona]??RR_TARIFAS_MEDICO.urbana;
+  if(tipo==='profesional'){
+    const t=RR_TARIFAS_PROF[key];if(!t)return 0;
+    let z=zona;
+    if(z==='rural_vs'||z==='rural_uzro'||z==='rural_generico')z='rural';
+    return t[z]??t.urbana;
+  }
+  return 0;
+}
+
+// ── Persistencia local (beneficiarios, zona por cliente, consecutivo) ──
+function rrLoadJSON(key,def){try{const v=localStorage.getItem(key);return v?JSON.parse(v):def;}catch(e){return def;}}
+function rrSaveJSON(key,val){try{localStorage.setItem(key,JSON.stringify(val));}catch(e){}}
+function rrGetBeneficiario(doc){return rrLoadJSON('rrBeneficiarios',{})[doc]||{};}
+function rrSaveBeneficiario(doc,data){
+  const all=rrLoadJSON('rrBeneficiarios',{});
+  all[doc]={...(all[doc]||{}),...data};
+  rrSaveJSON('rrBeneficiarios',all);
+}
+function rrGetZonaCliente(cliente){return rrLoadJSON('rrZonasClientes',{})[(cliente||'').toUpperCase()]||'urbana';}
+function rrSaveZonaCliente(cliente,zona){
+  const all=rrLoadJSON('rrZonasClientes',{});
+  all[(cliente||'').toUpperCase()]=zona;
+  rrSaveJSON('rrZonasClientes',all);
+}
+function rrNextConsecutivo(year){return (rrLoadJSON('rrConsecutivos',{})[year]||0)+1;}
+function rrBumpConsecutivo(year,used){
+  const all=rrLoadJSON('rrConsecutivos',{});
+  all[year]=Math.max(all[year]||0,used||0);
+  rrSaveJSON('rrConsecutivos',all);
+}
+
+// ── Número a texto en pesos colombianos (mayúsculas, estilo cuenta de cobro) ──
+function rrNumATexto(nRaw){
+  const UNI=['','UN','DOS','TRES','CUATRO','CINCO','SEIS','SIETE','OCHO','NUEVE'];
+  const ESP=['DIEZ','ONCE','DOCE','TRECE','CATORCE','QUINCE','DIECISÉIS','DIECISIETE','DIECIOCHO','DIECINUEVE'];
+  const VEINTI=['VEINTE','VEINTIUNO','VEINTIDÓS','VEINTITRÉS','VEINTICUATRO','VEINTICINCO','VEINTISÉIS','VEINTISIETE','VEINTIOCHO','VEINTINUEVE'];
+  const DEC=['','DIEZ','VEINTE','TREINTA','CUARENTA','CINCUENTA','SESENTA','SETENTA','OCHENTA','NOVENTA'];
+  const CEN=['','CIENTO','DOSCIENTOS','TRESCIENTOS','CUATROCIENTOS','QUINIENTOS','SEISCIENTOS','SETECIENTOS','OCHOCIENTOS','NOVECIENTOS'];
+  function dosDigitos(n){
+    if(n===0)return'';
+    if(n<10)return UNI[n];
+    if(n<20)return ESP[n-10];
+    if(n<30)return VEINTI[n-20];
+    const d=Math.floor(n/10),u=n%10;
+    return u===0?DEC[d]:DEC[d]+' Y '+UNI[u];
+  }
+  function tresDigitos(n){
+    if(n===0)return'';
+    if(n===100)return'CIEN';
+    const c=Math.floor(n/100),r=n%100;
+    let out='';
+    if(c>0)out+=CEN[c];
+    if(r>0)out+=(out?' ':'')+dosDigitos(r);
+    return out;
+  }
+  function seisDigitos(n){
+    if(n===0)return'';
+    const miles=Math.floor(n/1000),resto=n%1000;
+    let out='';
+    if(miles>0)out+=(miles===1?'MIL':tresDigitos(miles)+' MIL');
+    if(resto>0)out+=(out?' ':'')+tresDigitos(resto);
+    return out;
+  }
+  let n=Math.round(Math.abs(nRaw||0));
+  if(n===0)return'CERO PESOS M/CTE';
+  const millones=Math.floor(n/1000000),resto=n%1000000;
+  let out='';
+  if(millones>0)out+=(millones===1?'UN MILLÓN':tresDigitos(millones)+' MILLONES');
+  if(resto>0)out+=(out?' ':'')+seisDigitos(resto);
+  return out.trim()+' PESOS M/CTE';
+}
+function rrHoyStr(){
+  const d=new Date();
+  const MESES=['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+  return MESES[d.getMonth()]+'/'+String(d.getDate()).padStart(2,'0')+'/'+d.getFullYear();
+}
+
+// ── Estado y apertura del modal ──
+let rrCC=null;
+
+function rrOpenCC(profKey){
+  const p=rrData?.profs.find(x=>(x.doc||x.nombre)===profKey);
+  if(!p){showToast('Profesional no encontrado','error');return;}
+  const clasif=rrClasificar(p.especialidad);
+  const benef=rrGetBeneficiario(p.doc||p.nombre);
+
+  const MESES=['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+  const cnt={};
+  p.registros.forEach(r=>{const f=r.fecha||'';if(f.length>=7)cnt[f.substring(0,7)]=(cnt[f.substring(0,7)]||0)+1;});
+  const topYm=Object.entries(cnt).sort((a,b)=>b[1]-a[1])[0]?.[0]||'';
+  const mesNombre=topYm?MESES[parseInt(topYm.split('-')[1])-1]:'';
+  const anio=topYm?topYm.split('-')[0]:new Date().getFullYear().toString();
+
+  let groups=[],sinJornada=0;
+  if(clasif.tipo==='auxiliar'){
+    const porJornada={};
+    p.registros.forEach(r=>{
+      const j=r.jornada!==''?r.jornada.toString():'';
+      if(!j){sinJornada++;return;}
+      if(!porJornada[j])porJornada[j]={jornada:j,count:0};
+      porJornada[j].count++;
+    });
+    groups=Object.values(porJornada).sort((a,b)=>parseInt(a.jornada)-parseInt(b.jornada)).map(g=>({
+      tipo:'jornada',jornada:g.jornada,count:g.count,tarifa:RR_TARIFAS_AUX[g.jornada]??0,
+    }));
+  }else if(clasif.tipo==='profesional'||clasif.tipo==='medico'){
+    const porCliente={};
+    p.registros.forEach(r=>{
+      const cli=r.cliente||'SIN CLIENTE';
+      if(!porCliente[cli])porCliente[cli]={cliente:cli,count:0};
+      porCliente[cli].count++;
+    });
+    groups=Object.values(porCliente).sort((a,b)=>b.count-a.count).map(g=>{
+      const zona=rrGetZonaCliente(g.cliente);
+      return{tipo:'cliente',cliente:g.cliente,count:g.count,zona,tarifa:rrTarifaZona(clasif.tipo,clasif.key,zona)};
+    });
+  }else{
+    groups=[{tipo:'manual',label:p.especialidad||'SERVICIO',count:p.atenciones,tarifa:0}];
+  }
+
+  rrCC={
+    profKey,p,clasif,mesNombre,anio,groups,sinJornada,
+    benef:{...benef},
+    numero:anio+' - '+String(rrNextConsecutivo(anio)).padStart(2,'0'),
+    fechaCobro:rrHoyStr(),
+  };
+  rrRenderCC();
+  document.getElementById('ccModalBg').classList.add('open');
+}
+function rrCloseCC(){document.getElementById('ccModalBg').classList.remove('open');}
+
+function rrConceptoTexto(cc){
+  const {p,clasif,groups}=cc;
+  const esp=(p.especialidad||'').toUpperCase();
+  if(clasif.tipo==='auxiliar'){
+    const parts=groups.filter(g=>g.count>0).map(g=>`(${g.count} TURNOS - ${g.jornada} HORAS)`);
+    return 'SERVICIOS COMO '+esp+': '+(parts.join(' + ')||'(0)');
+  }
+  if(clasif.tipo==='profesional'||clasif.tipo==='medico'){
+    const unidad=clasif.tipo==='medico'?'CONSULTAS':(RR_TARIFAS_PROF[clasif.key]?.unidad||'SESIONES');
+    const buckets={};
+    groups.forEach(g=>{
+      let b=g.zona;
+      if(clasif.tipo==='profesional'&&(b==='rural_vs'||b==='rural_uzro'||b==='rural_generico'))b='rural';
+      buckets[b]=(buckets[b]||0)+g.count;
+    });
+    const total=Object.values(buckets).reduce((s,v)=>s+v,0);
+    const entries=Object.entries(buckets).filter(([,v])=>v>0);
+    const label=clasif.tipo==='medico'?esp:(RR_TARIFAS_PROF[clasif.key]?.label||esp);
+    if(entries.length<=1)return 'SERVICIOS COMO '+label+': ('+total+')';
+    const partsTxt=entries.map(([z,v])=>`${unidad} ${RR_ZONA_CONCEPTO_LABEL[z]||z} = ${v}`).join('   ');
+    return 'SERVICIOS COMO '+label+': '+total+' '+partsTxt;
+  }
+  const g=groups[0];
+  return 'SERVICIOS COMO '+(g?.label||esp)+': ('+(g?.count||0)+')';
+}
+
+function rrRenderCC(){
+  const cc=rrCC;if(!cc)return;
+  const {p,clasif,groups,benef}=cc;
+  let total=0;groups.forEach(g=>total+=(g.count*(g.tarifa||0)));
+  cc.total=total;
+
+  let html=`<div style="font-size:13px;color:var(--muted);margin-bottom:10px;">
+    <b style="color:var(--brand);font-size:15px;">${escH(p.nombre)}</b> · CC ${escH(p.doc)} · ${escH(p.especialidad)}
+  </div>`;
+
+  html+=`<div class="cc-section">📋 Datos de la cuenta de cobro</div>
+  <div class="cc-grid cols3">
+    <div class="form-row"><label>N° Cuenta de Cobro</label><input type="text" value="${escH(cc.numero)}" onchange="rrCCSet('numero',this.value)"></div>
+    <div class="form-row"><label>Fecha</label><input type="text" value="${escH(cc.fechaCobro)}" onchange="rrCCSet('fechaCobro',this.value)"></div>
+    <div class="form-row"><label>Mes del servicio</label><input type="text" value="${escH(cc.mesNombre+' '+cc.anio)}" onchange="rrCCSet('mesNombre',this.value)"></div>
+  </div>`;
+
+  html+=`<div class="cc-section">🧍 Información del beneficiario del pago</div>
+  <div class="cc-grid">
+    <div class="form-row"><label>NIT / Cédula</label><input type="text" value="${escH(benef.nit||p.doc||'')}" onchange="rrCCSetBenef('nit',this.value)"></div>
+    <div class="form-row"><label>Teléfono</label><input type="text" value="${escH(benef.telefono||'')}" onchange="rrCCSetBenef('telefono',this.value)"></div>
+    <div class="form-row" style="grid-column:1/-1;"><label>Dirección</label><input type="text" value="${escH(benef.direccion||'')}" onchange="rrCCSetBenef('direccion',this.value)"></div>
+    <div class="form-row" style="grid-column:1/-1;"><label>Departamento y municipio sede</label><input type="text" value="${escH(benef.depto||'')}" onchange="rrCCSetBenef('depto',this.value)"></div>
+  </div>`;
+
+  html+=`<div class="cc-section">💰 Concepto del servicio</div>`;
+  if(clasif.tipo==='auxiliar'){
+    html+=`<table class="cc-table"><thead><tr><th>Jornada</th><th>N° Turnos</th><th>Tarifa/turno</th><th>Subtotal</th></tr></thead><tbody>
+      ${groups.map((g,i)=>`<tr>
+        <td style="text-align:center;font-weight:700;">${g.jornada} horas</td>
+        <td style="text-align:center;">${g.count}</td>
+        <td><input type="number" value="${g.tarifa}" onchange="rrCCSetGroupTarifa(${i},this.value)"></td>
+        <td style="text-align:right;font-weight:700;">${fmt$(g.count*g.tarifa)}</td>
+      </tr>`).join('')}
+    </tbody></table>`;
+    if(cc.sinJornada>0)html+=`<div class="cc-note">⚠️ ${cc.sinJornada} atención(es) sin jornada marcada en el archivo — no se incluyen en el cobro automáticamente. Verifica si deben ajustarse.</div>`;
+  }else if(clasif.tipo==='profesional'||clasif.tipo==='medico'){
+    const zonasOpts=rrZonasParaTipo(clasif.tipo,clasif.key);
+    html+=`<table class="cc-table"><thead><tr><th>Cliente / Sede</th><th>Zona</th><th>N° atenciones</th><th>Tarifa</th><th>Subtotal</th></tr></thead><tbody>
+      ${groups.map((g,i)=>`<tr>
+        <td>${escH(g.cliente)}</td>
+        <td><select onchange="rrCCSetGroupZona(${i},this.value)">
+          ${zonasOpts.map(z=>`<option value="${z}" ${g.zona===z?'selected':''}>${escH(RR_ZONA_LABELS[z]||z)}</option>`).join('')}
+        </select></td>
+        <td style="text-align:center;">${g.count}</td>
+        <td><input type="number" value="${g.tarifa}" onchange="rrCCSetGroupTarifa(${i},this.value)"></td>
+        <td style="text-align:right;font-weight:700;">${fmt$(g.count*g.tarifa)}</td>
+      </tr>`).join('')}
+    </tbody></table>
+    <div class="cc-note">La zona se guarda por cliente para la próxima vez que generes una cuenta de cobro. Ajusta la tarifa manualmente si el caso lo requiere.</div>`;
+  }else{
+    html+=`<table class="cc-table"><thead><tr><th>Descripción</th><th>Cantidad</th><th>Tarifa unidad</th><th>Subtotal</th></tr></thead><tbody>
+      ${groups.map((g,i)=>`<tr>
+        <td><input type="text" value="${escH(g.label)}" onchange="rrCCSetGroupLabel(${i},this.value)"></td>
+        <td style="text-align:center;">${g.count}</td>
+        <td><input type="number" value="${g.tarifa}" onchange="rrCCSetGroupTarifa(${i},this.value)"></td>
+        <td style="text-align:right;font-weight:700;">${fmt$(g.count*g.tarifa)}</td>
+      </tr>`).join('')}
+    </tbody></table>
+    <div class="cc-note">⚠️ Especialidad no clasificada automáticamente — ingresa la tarifa manualmente.</div>`;
+  }
+
+  html+=`<div class="cc-total-box"><span class="lbl">VALOR TOTAL A COBRAR</span><span class="val">${fmt$(total)}</span></div>
+  <div class="cc-letras">${escH(rrNumATexto(total))}</div>`;
+
+  html+=`<div class="cc-section">🏦 Datos bancarios (favor realizar el pago en)</div>
+  <div class="cc-grid cols3">
+    <div class="form-row"><label>N° de cuenta</label><input type="text" value="${escH(benef.cuenta||'')}" onchange="rrCCSetBenef('cuenta',this.value)"></div>
+    <div class="form-row"><label>Tipo de cuenta</label>
+      <select onchange="rrCCSetBenef('tipoCuenta',this.value)">
+        <option value="AHORROS" ${benef.tipoCuenta==='AHORROS'?'selected':''}>Ahorros</option>
+        <option value="CORRIENTE" ${benef.tipoCuenta==='CORRIENTE'?'selected':''}>Corriente</option>
+      </select>
+    </div>
+    <div class="form-row"><label>Entidad financiera</label><input type="text" value="${escH(benef.entidad||'')}" onchange="rrCCSetBenef('entidad',this.value)"></div>
+  </div>
+  <div class="form-row"><label>Sucursal / ciudad de la cuenta</label><input type="text" value="${escH(benef.sucursal||'')}" onchange="rrCCSetBenef('sucursal',this.value)"></div>
+  <div class="cc-note">💾 Los datos del beneficiario y la zona por cliente quedan guardados en este computador para la próxima cuenta de cobro.</div>`;
+
+  document.getElementById('ccModalBody').innerHTML=html;
+}
+
+function rrCCSet(field,val){if(rrCC){rrCC[field]=val;rrRenderCC();}}
+function rrCCSetBenef(field,val){
+  if(!rrCC)return;
+  rrCC.benef[field]=val;
+  rrSaveBeneficiario(rrCC.p.doc||rrCC.p.nombre,rrCC.benef);
+  rrRenderCC();
+}
+function rrCCSetGroupTarifa(i,val){if(rrCC){rrCC.groups[i].tarifa=parseFloat(val)||0;rrRenderCC();}}
+function rrCCSetGroupZona(i,val){
+  if(!rrCC)return;
+  const g=rrCC.groups[i];
+  g.zona=val;
+  g.tarifa=rrTarifaZona(rrCC.clasif.tipo,rrCC.clasif.key,val);
+  if(g.cliente)rrSaveZonaCliente(g.cliente,val);
+  rrRenderCC();
+}
+function rrCCSetGroupLabel(i,val){if(rrCC){rrCC.groups[i].label=val;rrRenderCC();}}
+
+// ── Excel: Cuenta de Cobro (replica el formato oficial de NeoSalud) ──
+async function rrGenerarCuentaCobroExcel(){
+  const cc=rrCC;if(!cc){showToast('No hay una cuenta de cobro abierta','error');return;}
+  const {p,benef,numero,fechaCobro,mesNombre,anio}=cc;
+  let total=0;cc.groups.forEach(g=>total+=(g.count*(g.tarifa||0)));
+
+  const wb=new ExcelJS.Workbook();
+  const ws=wb.addWorksheet('Cuenta de Cobro',{
+    properties:{tabColor:{argb:'FF1F4E78'}},
+    pageSetup:{orientation:'portrait',fitToPage:true,fitToWidth:1,fitToHeight:1},
+  });
+  ws.getColumn(1).width=3;ws.getColumn(2).width=34;ws.getColumn(3).width=3;
+  ws.getColumn(4).width=16;ws.getColumn(5).width=28;ws.getColumn(6).width=3;
+
+  let cr=1;
+  const setCell=(r,c,val,opts={})=>{
+    const cell=ws.getCell(r,c);
+    cell.value=val;
+    cell.font={name:'Arial',size:opts.size||10,bold:!!opts.bold,color:{argb:opts.color||'FF000000'}};
+    if(opts.bg)cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:opts.bg}};
+    cell.alignment={horizontal:opts.align||'left',vertical:'middle',wrapText:opts.wrap!==false};
+    return cell;
+  };
+  const band=(txt,opts={})=>{
+    ws.mergeCells(cr,2,cr,5);
+    setCell(cr,2,txt,{bold:true,size:opts.size||11,color:COLORS.white,bg:opts.bg||COLORS.primary,align:opts.align||'center'});
+    ws.getRow(cr).height=opts.h||22;cr++;
+  };
+  const labelValue=(label,value)=>{
+    setCell(cr,2,label,{bold:true,size:9,color:'FF444444'});
+    ws.mergeCells(cr,4,cr,5);
+    setCell(cr,4,value,{size:10});
+    ws.getRow(cr).height=16;cr++;
+  };
+
+  band('CUENTA DE COBRO No. '+numero,{size:13,h:24});
+  labelValue('Fecha de la cuenta de cobro',fechaCobro);
+  cr++;
+  ws.mergeCells(cr,2,cr,5);setCell(cr,2,'NEOSALUD SAS',{bold:true,size:12,align:'center'});ws.getRow(cr).height=18;cr++;
+  ws.mergeCells(cr,2,cr,5);setCell(cr,2,'NIT: 901177664-9',{size:10,align:'center'});ws.getRow(cr).height=15;cr++;
+  ws.mergeCells(cr,2,cr,5);setCell(cr,2,'DEBE A:',{bold:true,size:10,align:'center'});ws.getRow(cr).height=16;cr++;
+  cr++;
+
+  band('INFORMACIÓN BENEFICIARIO DEL PAGO',{bg:COLORS.secondary});
+  labelValue('Nombre del contratista',p.nombre.toUpperCase());
+  labelValue('NIT - Cédula',benef.nit||p.doc||'');
+  labelValue('Dirección beneficiario del pago',benef.direccion||'');
+  labelValue('Teléfono',benef.telefono||'');
+  labelValue('Departamento y municipio sede',benef.depto||'');
+  cr++;
+
+  band('POR CONCEPTO DE:',{bg:COLORS.secondary});
+  ws.mergeCells(cr,2,cr,3);
+  setCell(cr,2,rrConceptoTexto(cc),{size:10});
+  setCell(cr,4,mesNombre+' '+anio,{size:10,align:'center',bold:true});
+  setCell(cr,5,fmt$(total),{size:11,bold:true,align:'right'});
+  ws.getRow(cr).height=32;cr++;
+  cr++;
+
+  band('LA SUMA DE:',{bg:COLORS.secondary});
+  setCell(cr,2,'Valor en números',{bold:true,size:9,color:'FF444444'});
+  ws.mergeCells(cr,4,cr,5);setCell(cr,4,'Valor en letras',{bold:true,size:9,color:'FF444444'});
+  ws.getRow(cr).height=14;cr++;
+  setCell(cr,2,fmt$(total),{bold:true,size:11});
+  ws.mergeCells(cr,4,cr,5);setCell(cr,4,rrNumATexto(total),{size:9});
+  ws.getRow(cr).height=30;cr++;
+  cr++;
+
+  band('FAVOR REALIZAR EL PAGO EN:',{bg:COLORS.secondary});
+  labelValue('Número de cuenta del beneficiario',benef.cuenta||'');
+  labelValue('Tipo de cuenta (Ahorros - Corriente)',benef.tipoCuenta||'');
+  labelValue('Entidad financiera',benef.entidad||'');
+  labelValue('Sucursal, ciudad de la cuenta',benef.sucursal||'');
+  cr+=3;
+
+  ws.mergeCells(cr,2,cr,5);setCell(cr,2,'_________________________________',{align:'center'});cr++;
+  ws.mergeCells(cr,2,cr,5);setCell(cr,2,'FIRMA',{align:'center',bold:true,size:9});cr++;
+  labelValue('Nombre completo',p.nombre.toUpperCase());
+  labelValue('Cédula',benef.nit||p.doc||'');
+
+  const buf=await wb.xlsx.writeBuffer();
+  const fname='Cuenta_Cobro_'+p.nombre.replace(/\s+/g,'_')+'_'+anio+'-'+(numero.split('-').pop()||'').trim()+'.xlsx';
+  saveAs(new Blob([buf]),fname);
+  rrBumpConsecutivo(anio,parseInt(numero.split('-').pop())||1);
+  showToast('Cuenta de cobro generada: '+fname,'success');
+}
+
+// ── Excel: Reporte de Servicios (detalle paciente/valor consistente con la cuenta de cobro) ──
+async function rrGenerarReporteServiciosExcel(){
+  const cc=rrCC;if(!cc){showToast('No hay una cuenta de cobro abierta','error');return;}
+  const {p,clasif,groups}=cc;
+
+  const wb=new ExcelJS.Workbook();
+  const ws=wb.addWorksheet('Reporte de Servicios',{
+    properties:{tabColor:{argb:'FF2E75B6'}},
+    pageSetup:{orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0},
+  });
+  const W=[30,14,14,14,16,26];
+  W.forEach((w,i)=>ws.getColumn(i+1).width=w);
+  const NUM=W.length;
+
+  let cr=1;
+  ws.mergeCells(cr,1,cr,NUM);
+  let c=ws.getCell(cr,1);
+  c.value=(p.especialidad||'SERVICIOS').toUpperCase();
+  c.font={name:'Arial',size:18,bold:true,color:{argb:COLORS.primary}};
+  c.alignment={horizontal:'center',vertical:'middle'};
+  ws.getRow(cr).height=30;cr++;
+
+  ws.mergeCells(cr,1,cr,NUM);
+  c=ws.getCell(cr,1);
+  const clientesTxt=[...new Set(p.registros.map(r=>r.cliente).filter(Boolean))].join(' · ');
+  c.value='FECHA: '+cc.fechaCobro+'   ·   '+(clientesTxt||'—');
+  c.font={name:'Arial',size:11,bold:true};
+  c.alignment={horizontal:'center',vertical:'middle'};
+  ws.getRow(cr).height=18;cr++;
+
+  ws.mergeCells(cr,1,cr,NUM);
+  c=ws.getCell(cr,1);
+  c.value=p.nombre.toUpperCase()+'  ·  CC '+p.doc;
+  c.font={name:'Arial',size:11,bold:true};
+  c.alignment={horizontal:'center',vertical:'middle'};
+  ws.getRow(cr).height=18;cr++;
+  cr++;
+
+  ['PACIENTE','N° ID','N° ATENCIONES','VALOR UNITARIO','VALOR TOTAL','NOVEDAD'].forEach((h,i)=>{
+    const cc2=ws.getCell(cr,i+1);
+    cc2.value=h;
+    cc2.font={name:'Arial',size:10,bold:true,color:{argb:COLORS.white}};
+    cc2.fill={type:'pattern',pattern:'solid',fgColor:{argb:COLORS.primary}};
+    cc2.alignment={horizontal:'center',vertical:'middle'};
+    cc2.border=thinBorder();
+  });
+  ws.getRow(cr).height=20;cr++;
+
+  // Agrupar por paciente + jornada/cliente usando la MISMA tarifa fijada en la cuenta de cobro
+  const groupKeyOf=r=>clasif.tipo==='auxiliar'?(r.jornada!==''?r.jornada.toString():null):(r.cliente||'SIN CLIENTE');
+  const porPacGrupo={};
+  p.registros.forEach(r=>{
+    const gk=groupKeyOf(r);
+    if(gk===null)return;
+    const pacKey=(r.pacDoc||r.pacNombre)+'||'+gk;
+    if(!porPacGrupo[pacKey])porPacGrupo[pacKey]={
+      paciente:r.pacNombre,doc:r.pacDoc,gk,count:0,
+      novedad:clasif.tipo==='auxiliar'?(gk+' horas'):r.cliente,
+    };
+    porPacGrupo[pacKey].count++;
+  });
+  const grupoByKey={};
+  groups.forEach(g=>{grupoByKey[clasif.tipo==='auxiliar'?g.jornada:g.cliente]=g;});
+
+  const filas=Object.values(porPacGrupo).sort((a,b)=>a.paciente.localeCompare(b.paciente,'es'));
+  const ds=cr;
+  filas.forEach((f,i)=>{
+    const g=grupoByKey[f.gk];
+    const tarifa=g?g.tarifa:0;
+    const row=[f.paciente,f.doc,f.count,tarifa,{formula:'C'+cr+'*D'+cr},f.novedad||''];
+    row.forEach((v,ci)=>{
+      const cell=ws.getCell(cr,ci+1);
+      cell.value=v;
+      cell.font={name:'Arial',size:10};
+      cell.border=thinBorder();
+      if(i%2===1)cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFF5F5F5'}};
+      if(ci===3||ci===4){cell.numFmt='"$"#,##0';cell.alignment={horizontal:'right',vertical:'middle'};}
+      else if(ci===1||ci===2){cell.alignment={horizontal:'center',vertical:'middle'};}
+      else cell.alignment={horizontal:'left',vertical:'middle'};
+    });
+    cr++;
+  });
+  const de=cr-1;
+
+  if(filas.length){
+    ws.mergeCells(cr,1,cr,2);
+    c=ws.getCell(cr,1);c.value='TOTAL';
+    c.font={name:'Arial',size:11,bold:true,color:{argb:COLORS.white}};
+    c.fill={type:'pattern',pattern:'solid',fgColor:{argb:COLORS.primary}};
+    c.alignment={horizontal:'right',vertical:'middle'};
+    ws.getCell(cr,2).fill=c.fill;
+    const tc=ws.getCell(cr,3);
+    tc.value={formula:'SUM(C'+ds+':C'+de+')'};tc.numFmt='0';
+    tc.font={name:'Arial',size:11,bold:true,color:{argb:COLORS.white}};
+    tc.fill={type:'pattern',pattern:'solid',fgColor:{argb:COLORS.primary}};
+    tc.alignment={horizontal:'center',vertical:'middle'};
+    ws.getCell(cr,4).fill={type:'pattern',pattern:'solid',fgColor:{argb:COLORS.primary}};
+    const vt=ws.getCell(cr,5);
+    vt.value={formula:'SUM(E'+ds+':E'+de+')'};vt.numFmt='"$"#,##0';
+    vt.font={name:'Arial',size:11,bold:true,color:{argb:'FFFFFF00'}};
+    vt.fill={type:'pattern',pattern:'solid',fgColor:{argb:COLORS.primary}};
+    vt.alignment={horizontal:'right',vertical:'middle'};
+    ws.getCell(cr,6).fill={type:'pattern',pattern:'solid',fgColor:{argb:COLORS.primary}};
+    ws.getRow(cr).height=22;cr++;
+  }
+  cr+=2;
+
+  ws.mergeCells(cr,1,cr,3);
+  ws.getCell(cr,1).value='QUIÉN RECIBE: _______________________________';
+  ws.getCell(cr,1).font={name:'Arial',size:10};cr++;
+  cr++;
+  ws.mergeCells(cr,1,cr,3);
+  ws.getCell(cr,1).value='QUIÉN ENTREGA: ______________________________';
+  ws.getCell(cr,1).font={name:'Arial',size:10};
+
+  const buf=await wb.xlsx.writeBuffer();
+  const fname='Reporte_Servicios_'+p.nombre.replace(/\s+/g,'_')+'_'+cc.anio+'.xlsx';
+  saveAs(new Blob([buf]),fname);
+  showToast('Reporte de servicios generado: '+fname,'success');
+}
+
 function rrClearAll(){
-  rrData=null;rrExpanded=new Set();rrPacExpanded=new Set();
+  rrData=null;rrExpanded=new Set();rrPacExpanded=new Set();rrCC=null;
+  rrCloseCC();
   document.getElementById('rrFileChips').innerHTML='';
   document.getElementById('rrFiltersPanel').style.display='none';
   document.getElementById('rrActionsPanel').style.display='none';
@@ -2704,7 +3267,7 @@ async function rrExportExcel(){
     pageSetup:{orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0},
   });
   // 6 columnas: Fecha | Hora | Adm. | Procedimiento | Cliente | Jornada
-  const W=[13,10,10,56,34,12];
+  const W=[13,10,10,12,50,32,12];
   W.forEach((w,i)=>ws.getColumn(i+1).width=w);
   const NUM=W.length;
 
@@ -2729,10 +3292,10 @@ async function rrExportExcel(){
 
   // ─── Banda KPI global (como las tarjetas de la app) ───
   const KPIS=[
-    {c1:1,c2:2,lbl:'🧑‍⚕️ PROFESIONALES',val:profs.length,dark:'FF1F4E78',light:'FFDCE9F7'},
-    {c1:3,c2:3,lbl:'📋 ATENCIONES',val:totAten,dark:'FF375623',light:'FFE2EFDA'},
-    {c1:4,c2:4,lbl:'👥 PACIENTES ÚNICOS',val:allPacs.size,dark:'FF833C00',light:'FFFCE4D6'},
-    {c1:5,c2:6,lbl:'⏱️ HORAS REGISTRADAS',val:totHoras,dark:'FF3B2E58',light:'FFE5DFF2'},
+    {c1:1,c2:3,lbl:'🧑‍⚕️ PROFESIONALES',val:profs.length,dark:'FF1F4E78',light:'FFDCE9F7'},
+    {c1:4,c2:4,lbl:'📋 ATENCIONES',val:totAten,dark:'FF375623',light:'FFE2EFDA'},
+    {c1:5,c2:5,lbl:'👥 PACIENTES ÚNICOS',val:allPacs.size,dark:'FF833C00',light:'FFFCE4D6'},
+    {c1:6,c2:7,lbl:'⏱️ HORAS REGISTRADAS',val:totHoras,dark:'FF3B2E58',light:'FFE5DFF2'},
   ];
   KPIS.forEach(k=>{
     if(k.c2>k.c1)ws.mergeCells(cr,k.c1,cr,k.c2);
@@ -2764,7 +3327,7 @@ async function rrExportExcel(){
       p.numDias+' días trabajados','FFEFE5F7','FF3B2E58',10,true,17,'left');
 
     // Encabezado de columnas
-    ['FECHA','HORA','ADM.','PROCEDIMIENTO / SERVICIO','CLIENTE','JORNADA (HRS)'].forEach((h,i)=>{
+    ['FECHA','HORA','ADM.','CUPS','PROCEDIMIENTO / SERVICIO','CLIENTE','JORNADA (HRS)'].forEach((h,i)=>{
       const cc=ws.getCell(cr,i+1);
       cc.value=h;
       cc.font={name:'Arial',size:9,bold:true,color:{argb:COLORS.white}};
@@ -2783,7 +3346,7 @@ async function rrExportExcel(){
     const pacs=Object.values(porPac).sort((a,b)=>b.regs.length-a.regs.length);
     const profStart=cr;
     let firstDataRow=null,lastDataRow=null;
-    const jornCol=6;
+    const jornCol=7;
 
     pacs.forEach(pa=>{
       pa.regs.sort((a,b)=>{
@@ -2804,13 +3367,13 @@ async function rrExportExcel(){
       pa.regs.forEach((x,ri)=>{
         if(firstDataRow===null)firstDataRow=cr;
         lastDataRow=cr;
-        const vals=[x.fecha,x.hora,x.adm,x.cup,x.cliente,x.jornada!==''?x.jornada:null];
+        const vals=[x.fecha,x.hora,x.adm,x.cupsCode,x.cup,x.cliente,x.jornada!==''?x.jornada:null];
         vals.forEach((v,i)=>{
           const cc=ws.getCell(cr,i+1);
           cc.value=v;cc.font={name:'Arial',size:9};cc.border=thinBorder();
           if(ri%2===1)cc.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFF5F5F5'}};
-          if(i===5){cc.numFmt='0';cc.alignment={horizontal:'center',vertical:'middle'};}
-          else if(i<=2){cc.alignment={horizontal:'center',vertical:'middle'};}
+          if(i===6){cc.numFmt='0';cc.alignment={horizontal:'center',vertical:'middle'};}
+          else if(i<=3){cc.alignment={horizontal:'center',vertical:'middle'};}
           else cc.alignment={horizontal:'left',vertical:'middle',wrapText:true};
         });
         cr++;
