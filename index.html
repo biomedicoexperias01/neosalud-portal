@@ -7,12 +7,14 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <style>
 /* ─── RESET & BASE ─────────────────────────────────────── */
 *{box-sizing:border-box;margin:0;padding:0;}
 :root{
   --brand:#1F4E78;--brand2:#2E75B6;--brand3:#D6E4F0;
-  --green:#548235;--red:#C00000;--orange:#ED7D31;
+  --green:#548235;--red:#C00000;--orange:#ED7D31;--purple:#7030A0;
   --bg:#EEF3F8;--card:#fff;--border:#DDE3EA;
   --text:#1A202C;--muted:#64748B;--light:#F1F5F9;
   --shadow:0 2px 12px rgba(0,0,0,.08);
@@ -180,6 +182,20 @@ a{text-decoration:none;color:inherit;}
 .btn-secondary:hover{background:var(--border);}
 .btn-success{background:#d1fae5;color:#065f46;}
 .btn-success:hover{background:#a7f3d0;}
+.btn-consolidate{
+  justify-content:center;border:1.5px dashed var(--purple);color:var(--purple);
+  background:#F3EAFB;font-weight:700;
+}
+.btn-consolidate:hover{background:#E9D8F7;}
+.btn-consolidate.active{
+  background:var(--purple);color:#fff;border-style:solid;
+  box-shadow:0 3px 10px rgba(112,48,160,.3);
+}
+.file-tab-btn.consolidated{border-bottom-color:transparent;}
+.file-tab-btn.consolidated.active{color:var(--purple);border-bottom-color:var(--purple);}
+.file-tab-btn.consolidated.active .ftab-count{background:var(--purple);color:#fff;}
+.file-tab-btn.consolidated .ftab-valor{color:var(--purple);}
+.file-chip.consolidated{border-left:4px solid var(--purple);background:#F7F0FC;}
 .btn-sm{padding:6px 14px;font-size:12px;border-radius:6px;}
 
 /* ─── RIGHT PANEL / STATS + TABLE ──────────────────────── */
@@ -543,6 +559,9 @@ tfoot td.num{text-align:right;}
 
         <!-- Actions -->
         <div id="actionsPanel" style="display:none;margin-top:16px;">
+          <!-- Consolidar archivos del mismo cliente (aparece cuando hay grupos consolidables) -->
+          <button class="btn btn-consolidate" id="btnConsolidate" style="display:none;width:100%;margin-bottom:10px;"
+                  onclick="toggleConsolidate()">🔗 Consolidar mismo cliente</button>
           <!-- Modo de exportación (solo visible con 2+ archivos) -->
           <div id="exportModeRow" style="display:none;background:var(--light);border:1px solid var(--border);
                border-radius:8px;padding:10px 14px;margin-bottom:10px;gap:10px;align-items:flex-start;flex-direction:column;">
@@ -725,8 +744,8 @@ tfoot td.num{text-align:right;}
     <div class="modal-body" id="ccModalBody"></div>
     <div class="modal-footer" style="flex-wrap:wrap;">
       <button class="btn btn-secondary" onclick="rrCloseCC()">Cerrar</button>
-      <button class="btn btn-secondary" onclick="rrGenerarReporteServiciosExcel()">📋 Reporte de Servicios (Excel)</button>
-      <button class="btn btn-primary" onclick="rrGenerarCuentaCobroExcel()">📄 Cuenta de Cobro (Excel)</button>
+      <button class="btn btn-secondary" onclick="rrGenerarReporteServicios()">📋 Reporte de Servicios</button>
+      <button class="btn btn-primary" onclick="rrGenerarCuentaCobro()">📄 Cuenta de Cobro</button>
     </div>
   </div>
 </div>
@@ -942,6 +961,7 @@ function clasificarFiltroDerivado(row,filtro){
 // ═══════════════════════════════════════════════════════════
 let files=[];         // [{id,fileName,template,rows,valor,clientHint,filtros:{}}]
 let activeFileId=null; // ID del archivo activo en las tabs (null = primer archivo)
+let consolidateMode=false; // consolidar archivos del mismo cliente en una vista sumada
 let currentPage=1;
 let sortCol=null,sortDir=1;
 let filteredRows=[];
@@ -1148,6 +1168,7 @@ async function handleFiles(fileList){
   const csvs=Array.from(fileList).filter(f=>f.name.toLowerCase().endsWith('.csv'));
   if(!csvs.length){showToast('No se detectaron archivos CSV','error');return;}
   for(const f of csvs)await processFile(f);
+  refreshConsolidation();
   renderFileTabs();
   renderFileChips();
   renderFilters();
@@ -1215,13 +1236,19 @@ function renderFileTabs(){
   const tplIcons={'sih-cargos-paciente':'🏥','facturacion-cartera':'💳','detalle-factura':'🧾'};
   let html='';
   files.forEach(a=>{
-    const icon=tplIcons[a.template.id]||'📄';
-    const alias=a.clientHint?.alias||(a.invoiceMeta?.facturaNo?'FC '+a.invoiceMeta.facturaNo:'');
-    const shortName=a.fileName.replace(/\.csv$/i,'');
-    const label=alias?`${shortName} · ${alias}`:shortName;
     const isActive=activeFileId===a.id;
-    html+=`<button class="file-tab-btn${isActive?' active':''}" onclick="selectFileTab('${a.id}')">
-      ${icon} <span style="max-width:160px;overflow:hidden;text-overflow:ellipsis;">${escH(label)}</span>
+    let icon,label;
+    if(a.isConsolidated){
+      icon='🔗';
+      label=a.clientName+' · '+a.numFacturas+' arch.';
+    }else{
+      icon=tplIcons[a.template.id]||'📄';
+      const alias=a.clientHint?.alias||(a.invoiceMeta?.facturaNo?'FC '+a.invoiceMeta.facturaNo:'');
+      const shortName=a.fileName.replace(/\.csv$/i,'');
+      label=alias?`${shortName} · ${alias}`:shortName;
+    }
+    html+=`<button class="file-tab-btn${isActive?' active':''}${a.isConsolidated?' consolidated':''}" onclick="selectFileTab('${a.id}')">
+      ${icon} <span style="max-width:180px;overflow:hidden;text-overflow:ellipsis;">${escH(label)}</span>
       <span class="ftab-count">${a.rows.length.toLocaleString('es-CO')}</span>
       <span class="ftab-valor">${fmt$(a.valor)}</span>
     </button>`;
@@ -1305,37 +1332,150 @@ function selectFileTab(fileId){
   applyFiltersAndRender();
 }
 
+// ── Consolidación de archivos del mismo cliente ──────────────
+// Clave de agrupación: plantilla + cliente (NIT en detalle-factura; cliente dominante en SIH/Cartera)
+function fileClientKey(f){
+  if(f.isConsolidated)return '__CONS_'+f.id;
+  if(f.template.id==='detalle-factura'){
+    const nit=(f.invoiceMeta?.nit||'').replace(/[.\s]/g,'');
+    const cli=(f.invoiceMeta?.cliente||'').trim().toUpperCase();
+    return f.template.id+'|'+(nit||cli||('FILE_'+f.id));
+  }
+  const cnt={};
+  f.rows.forEach(r=>{const c=(r['Cliente']||'').toString().trim().toUpperCase();if(c)cnt[c]=(cnt[c]||0)+1;});
+  const top=Object.entries(cnt).sort((a,b)=>b[1]-a[1])[0];
+  return f.template.id+'|'+(top?top[0]:('FILE_'+f.id));
+}
+function fileClientName(f){
+  if(f.template.id==='detalle-factura')return f.invoiceMeta?.cliente||f.clientHint?.alias||'Cliente';
+  const cnt={};
+  f.rows.forEach(r=>{const c=(r['Cliente']||'').toString().trim();if(c)cnt[c]=(cnt[c]||0)+1;});
+  const top=Object.entries(cnt).sort((a,b)=>b[1]-a[1])[0];
+  return top?top[0]:(f.clientHint?.alias||f.template.nombre);
+}
+// Cuántos grupos de 2+ archivos del mismo cliente hay entre los archivos reales
+function consolidatableGroups(){
+  const real=files.filter(f=>!f.isConsolidated);
+  const groups={};
+  real.forEach(f=>{const k=fileClientKey(f);(groups[k]=groups[k]||[]).push(f);});
+  return Object.entries(groups).filter(([,g])=>g.length>=2);
+}
+// (Re)construye las entradas consolidadas a partir de los archivos reales
+function buildConsolidatedEntries(){
+  files=files.filter(f=>!f.isConsolidated); // quitar consolidados previos
+  const nuevos=[];
+  consolidatableGroups().forEach(([key,grp])=>{
+    const first=grp[0];
+    const esDetalle=first.template.id==='detalle-factura';
+    // Etiquetar cada fila con su factura de origen (para la columna FACTURA en detalle)
+    if(esDetalle)grp.forEach(f=>{const fn=f.invoiceMeta?.facturaNo||'';f.rows.forEach(r=>{r.__srcFacturaNo=fn;});});
+    const mergedRows=grp.flatMap(f=>f.rows);
+    const valor=grp.reduce((s,f)=>s+(f.valor||0),0);
+    let invoiceMeta=null;
+    if(esDetalle){
+      const facturas=grp.map(f=>f.invoiceMeta?.facturaNo).filter(Boolean).join(' + ');
+      invoiceMeta={...(first.invoiceMeta||{}),facturaNo:facturas,__consolidado:true,__numFacturas:grp.length};
+    }
+    nuevos.push({
+      id:'cons_'+key.replace(/[^A-Za-z0-9]/g,'').substring(0,24),
+      fileName:'Consolidado — '+fileClientName(first),
+      clientName:fileClientName(first),
+      template:first.template,rows:mergedRows,valor,
+      clientHint:first.clientHint||null,filtros:{},
+      invoiceMeta,isConsolidated:true,memberIds:grp.map(f=>f.id),numFacturas:grp.length,
+    });
+  });
+  files=nuevos.concat(files); // consolidados primero
+  return nuevos;
+}
+// Refresca las entradas consolidadas si el modo está activo (tras cargar/quitar archivos)
+function refreshConsolidation(){
+  if(!consolidateMode)return;
+  const prev=activeFileId;
+  const nuevos=buildConsolidatedEntries();
+  if(!nuevos.length)consolidateMode=false;
+  if(!files.find(f=>f.id===prev))activeFileId=(nuevos[0]&&nuevos[0].id)||(files[0]&&files[0].id)||null;
+}
+// Archivos que se exportan (evita duplicar: consolidados + reales que no pertenecen a ningún consolidado)
+function exportableFiles(){
+  if(!consolidateMode)return files.filter(f=>!f.isConsolidated);
+  const memberIds=new Set(files.filter(f=>f.isConsolidated).flatMap(f=>f.memberIds));
+  return files.filter(f=>f.isConsolidated||!memberIds.has(f.id));
+}
+function toggleConsolidate(){
+  if(!consolidateMode){
+    const nuevos=buildConsolidatedEntries();
+    if(!nuevos.length){showToast('No hay 2+ archivos del mismo cliente para consolidar','error');return;}
+    consolidateMode=true;
+    activeFileId=nuevos[0].id;
+    showToast('🔗 '+nuevos.length+' cliente(s) consolidado(s) — se suman los valores','success');
+  }else{
+    consolidateMode=false;
+    files=files.filter(f=>!f.isConsolidated);
+    if(!files.find(f=>f.id===activeFileId))activeFileId=files.length?files[0].id:null;
+    showToast('Consolidación desactivada','info');
+  }
+  sortCol=null;sortDir=1;currentPage=1;
+  renderFileTabs();renderFileChips();renderFilters();
+  updateClientBanner(files.find(f=>f.id===activeFileId)||null);
+  applyFiltersAndRender();
+}
+function updateConsolidateBtn(){
+  const btn=document.getElementById('btnConsolidate');
+  if(!btn)return;
+  const n=consolidatableGroups().length;
+  btn.style.display=(n>0||consolidateMode)?'block':'none';
+  btn.classList.toggle('active',consolidateMode);
+  btn.innerHTML=consolidateMode
+    ?'🔗 Consolidación activa · clic para separar'
+    :'🔗 Consolidar mismo cliente'+(n>0?' ('+n+')':'');
+}
+
 function renderFileChips(){
   const cont=document.getElementById('fileChips');
   const tplIcons={'sih-cargos-paciente':'🏥','facturacion-cartera':'💳','detalle-factura':'🧾'};
   cont.innerHTML=files.map(a=>{
     const isActive=activeFileId===a.id;
     let metaLine=`${a.rows.length.toLocaleString()} reg · ${fmt$(a.valor)} · ${a.template.nombre}`;
-    if(a.invoiceMeta?.facturaNo){
+    if(a.isConsolidated){
+      metaLine=`${a.numFacturas} archivos sumados · ${a.rows.length.toLocaleString()} reg · ${fmt$(a.valor)}`;
+    }else if(a.invoiceMeta?.facturaNo){
       metaLine=`FC ${a.invoiceMeta.facturaNo} · ${a.invoiceMeta.cliente||''} · ${a.rows.length.toLocaleString()} reg`;
     }
-    return`<div class="file-chip ok" style="cursor:pointer;${isActive?'border-left-color:var(--brand);background:var(--brand3);':''}"
+    const accent=a.isConsolidated?'var(--purple,#7030A0)':'var(--brand)';
+    const nameHtml=a.isConsolidated
+      ? `🔗 ${escH(a.fileName)}`
+      : `${tplIcons[a.template.id]||'📄'} ${escH(a.fileName)}`;
+    return`<div class="file-chip ok${a.isConsolidated?' consolidated':''}" style="cursor:pointer;${isActive?`border-left-color:${accent};background:var(--brand3);`:''}"
       onclick="selectFileTab('${a.id}')">
       <div class="file-chip-info">
-        <div class="file-chip-name" style="${isActive?'color:var(--brand);':''}">${tplIcons[a.template.id]||'📄'} ${escH(a.fileName)}</div>
+        <div class="file-chip-name" style="${isActive?`color:${accent};`:''}${a.isConsolidated?'font-weight:800;':''}">${nameHtml}</div>
         <div class="file-chip-meta">${metaLine}</div>
       </div>
-      <button class="chip-remove" onclick="event.stopPropagation();removeFile('${a.id}')" title="Quitar">✕</button>
+      <button class="chip-remove" onclick="event.stopPropagation();removeFile('${a.id}')" title="${a.isConsolidated?'Quitar consolidado':'Quitar'}">✕</button>
     </div>`;
   }).join('');
 
-  const hasMul=files.length>1;
+  const hasMul=files.filter(f=>!f.isConsolidated).length>1;
   document.getElementById('filtersPanel').style.display=files.length?'block':'none';
   document.getElementById('actionsPanel').style.display=files.length?'block':'none';
   document.getElementById('btnExport').disabled=!files.length;
   const sepRow=document.getElementById('exportModeRow');
   if(sepRow)sepRow.style.display=hasMul?'flex':'none';
+  updateConsolidateBtn();
 }
 
 function removeFile(id){
-  files=files.filter(f=>f.id!==id);
+  const removed=files.find(f=>f.id===id);
+  if(removed?.isConsolidated){
+    // Quitar una tarjeta consolidada solo desactiva ese grupo, no borra los archivos reales
+    files=files.filter(f=>f.id!==id);
+  }else{
+    files=files.filter(f=>f.id!==id);
+  }
   if(activeFileId===id)activeFileId=files.length?files[0].id:null;
   sortCol=null;sortDir=1;currentPage=1;
+  refreshConsolidation();
   renderFileTabs();
   renderFileChips();
   renderFilters();
@@ -1796,13 +1936,14 @@ async function exportExcel(){
 
   // Determinar modo: leer el valor del radio group
   const exportModeVal=document.querySelector('input[name="exportMode"]:checked')?.value||'separado';
-  const separado=files.length>1&&exportModeVal==='separado';
+  const expFiles=exportableFiles();
+  const separado=expFiles.length>1&&exportModeVal==='separado';
 
   try{
     if(separado){
       // ── MODO SEPARADO: un Excel por archivo ──
       let count=0;
-      for(const a of files){
+      for(const a of expFiles){
         const rows=getFilteredRows(a);
         if(!rows.length){showToast('⚠ '+a.fileName+': sin datos tras filtros','error');continue;}
         const wb=new ExcelJS.Workbook();
@@ -1821,7 +1962,7 @@ async function exportExcel(){
       showToast('Generando Excel combinado…','info');
       const wb=new ExcelJS.Workbook();
       wb.creator='NeoSalud SAS';wb.created=new Date();
-      for(const a of files){
+      for(const a of expFiles){
         const rows=getFilteredRows(a);
         if(!rows.length)continue;
         construirHoja(wb,a,rows);
@@ -1856,7 +1997,11 @@ function nombreArchivo(){
 }
 
 function nombreArchivoSingle(a){
-  const alias=(a.clientHint?.alias||a.template.nombre).replace(/[^A-Z0-9]/gi,'_').substring(0,20);
+  if(a.isConsolidated){
+    const cli=(a.clientName||'CLIENTE').replace(/[^A-Z0-9]/gi,'_').substring(0,24);
+    return 'CONSOLIDADO_'+cli+'_'+detectMesLabel(a.rows)+'.xlsx';
+  }
+  const alias=(a.clientHint?.alias||a.invoiceMeta?.cliente||a.template.nombre).replace(/[^A-Z0-9]/gi,'_').substring(0,20);
   return 'REPORTE_'+alias+'_'+detectMesLabel(a.rows)+'.xlsx';
 }
 
@@ -1902,10 +2047,10 @@ function construirHojaDetalle(wb,archivo,data){
   const totalProcs=data.length;
   const totalNeto=data.reduce((s,r)=>s+(parseFloat(r['Neto'])||0),0);
 
-  // Virtual cols en cada fila
+  // Virtual cols en cada fila (en consolidado, cada fila conserva su propia factura de origen)
   const factNo=meta.facturaNo||'';
   data.forEach(r=>{
-    r.__facturaNo=factNo;
+    r.__facturaNo=r.__srcFacturaNo||factNo;
     r.__ident=(r.__td||'')+(r.__documento?' '+r.__documento:'');
   });
 
@@ -1921,8 +2066,9 @@ function construirHojaDetalle(wb,archivo,data){
     {key:'Neto',             label:'NETO',              width:14, tipo:'moneda'},
   ];
 
-  let sn=('FC '+(factNo||'DETALLE')).substring(0,31).replace(/[\\\/\?\*\[\]:]/g,'_');
-  let suf=1;while(wb.worksheets.find(w=>w.name===sn))sn=('FC '+(factNo||'')+'_'+(++suf)).substring(0,31);
+  const snBase=meta.__consolidado?('CONSOLIDADO '+(meta.cliente||'')):('FC '+(factNo||'DETALLE'));
+  let sn=snBase.substring(0,31).replace(/[\\\/\?\*\[\]:]/g,'_');
+  let suf=1;while(wb.worksheets.find(w=>w.name===sn))sn=(snBase+'_'+(++suf)).substring(0,31);
   const ws=wb.addWorksheet(sn,{
     properties:{tabColor:{argb:'FF00B050'}},
     pageSetup:{orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0,horizontalCentered:true},
@@ -2899,6 +3045,7 @@ function rrOpenCC(profKey){
     benef:{...benef},
     numero:anio+' - '+String(rrNextConsecutivo(anio)).padStart(2,'0'),
     fechaCobro:rrHoyStr(),
+    formato:rrLoadJSON('rrFormatoDescarga',{f:'excel'}).f||'excel',
   };
   rrRenderCC();
   document.getElementById('ccModalBg').classList.add('open');
@@ -2937,8 +3084,17 @@ function rrRenderCC(){
   let total=0;groups.forEach(g=>total+=(g.count*(g.tarifa||0)));
   cc.total=total;
 
-  let html=`<div style="font-size:13px;color:var(--muted);margin-bottom:10px;">
-    <b style="color:var(--brand);font-size:15px;">${escH(p.nombre)}</b> · CC ${escH(p.doc)} · ${escH(p.especialidad)}
+  let html=`<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
+    <div style="font-size:13px;color:var(--muted);">
+      <b style="color:var(--brand);font-size:15px;">${escH(p.nombre)}</b> · CC ${escH(p.doc)} · ${escH(p.especialidad)}
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span style="font-size:11px;font-weight:700;color:var(--muted);">FORMATO DE DESCARGA</span>
+      <div class="pills" style="flex-wrap:nowrap;">
+        <div class="pill ${cc.formato==='excel'?'active':''}" onclick="rrCCSetFormato('excel')">📗 Excel</div>
+        <div class="pill ${cc.formato==='pdf'?'active':''}" onclick="rrCCSetFormato('pdf')">📕 PDF</div>
+      </div>
+    </div>
   </div>`;
 
   html+=`<div class="cc-section">📋 Datos de la cuenta de cobro</div>
@@ -3014,6 +3170,12 @@ function rrRenderCC(){
 }
 
 function rrCCSet(field,val){if(rrCC){rrCC[field]=val;rrRenderCC();}}
+function rrCCSetFormato(f){
+  if(!rrCC)return;
+  rrCC.formato=f;
+  rrSaveJSON('rrFormatoDescarga',{f});
+  rrRenderCC();
+}
 function rrCCSetBenef(field,val){
   if(!rrCC)return;
   rrCC.benef[field]=val;
@@ -3236,6 +3398,202 @@ async function rrGenerarReporteServiciosExcel(){
   const buf=await wb.xlsx.writeBuffer();
   const fname='Reporte_Servicios_'+p.nombre.replace(/\s+/g,'_')+'_'+cc.anio+'.xlsx';
   saveAs(new Blob([buf]),fname);
+  showToast('Reporte de servicios generado: '+fname,'success');
+}
+
+// ── Dispatchers: generan en el formato elegido (Excel o PDF) ──
+function rrGenerarCuentaCobro(){
+  if(!rrCC){showToast('No hay una cuenta de cobro abierta','error');return;}
+  if(rrCC.formato==='pdf')rrGenerarCuentaCobroPDF();else rrGenerarCuentaCobroExcel();
+}
+function rrGenerarReporteServicios(){
+  if(!rrCC){showToast('No hay una cuenta de cobro abierta','error');return;}
+  if(rrCC.formato==='pdf')rrGenerarReporteServiciosPDF();else rrGenerarReporteServiciosExcel();
+}
+
+// ── Helper: convierte color ARGB ('FF1F4E78') a [r,g,b] para jsPDF ──
+function rrArgbRgb(argb){
+  const h=(argb||'FF808080').length===8?argb.substring(2):argb;
+  return[parseInt(h.substring(0,2),16),parseInt(h.substring(2,4),16),parseInt(h.substring(4,6),16)];
+}
+
+// ── PDF: Cuenta de Cobro (replica el formato oficial de NeoSalud) ──
+function rrGenerarCuentaCobroPDF(){
+  const cc=rrCC;if(!cc){showToast('No hay una cuenta de cobro abierta','error');return;}
+  if(!window.jspdf){showToast('No se pudo cargar el generador de PDF','error');return;}
+  const {p,benef,numero,fechaCobro,mesNombre,anio}=cc;
+  let total=0;cc.groups.forEach(g=>total+=(g.count*(g.tarifa||0)));
+
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({unit:'mm',format:'a4'});
+  const PW=210,ML=15,MR=15,CW=PW-ML-MR;
+  let y=15;
+
+  const band=(txt,opts={})=>{
+    const h=opts.h||8;
+    doc.setFillColor(...rrArgbRgb(opts.bg||COLORS.primary));
+    doc.rect(ML,y,CW,h,'F');
+    doc.setTextColor(...rrArgbRgb(opts.color||COLORS.white));
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(opts.size||11);
+    doc.text(txt,PW/2,y+h/2+1.4,{align:'center'});
+    doc.setTextColor(0,0,0);
+    y+=h+2;
+  };
+  const plain=(txt,opts={})=>{
+    doc.setFont('helvetica',opts.bold?'bold':'normal');
+    doc.setFontSize(opts.size||10);
+    doc.text(txt,PW/2,y+3,{align:'center'});
+    y+=opts.h||6;
+  };
+  const labelValue=(label,value)=>{
+    doc.setFont('helvetica','bold');doc.setFontSize(8.5);doc.setTextColor(68,68,68);
+    doc.text(label,ML,y+3.2);
+    doc.setFont('helvetica','normal');doc.setFontSize(9.5);doc.setTextColor(0,0,0);
+    const lines=doc.splitTextToSize(String(value||''),CW-72);
+    doc.text(lines,ML+72,y+3.2);
+    y+=Math.max(6,lines.length*4.2);
+  };
+
+  band('CUENTA DE COBRO No. '+numero,{size:13,h:9});
+  labelValue('Fecha de la cuenta de cobro',fechaCobro);
+  y+=2;
+  plain('NEOSALUD SAS',{bold:true,size:12,h:6});
+  plain('NIT: 901177664-9',{size:9,h:5});
+  plain('DEBE A:',{bold:true,size:9,h:6});
+  y+=1;
+
+  band('INFORMACIÓN BENEFICIARIO DEL PAGO',{bg:COLORS.secondary,h:7});
+  labelValue('Nombre del contratista',p.nombre.toUpperCase());
+  labelValue('NIT - Cédula',benef.nit||p.doc||'');
+  labelValue('Dirección beneficiario del pago',benef.direccion||'');
+  labelValue('Teléfono',benef.telefono||'');
+  labelValue('Departamento y municipio sede',benef.depto||'');
+  y+=1;
+
+  band('POR CONCEPTO DE:',{bg:COLORS.secondary,h:7});
+  doc.setFont('helvetica','normal');doc.setFontSize(9.5);doc.setTextColor(0,0,0);
+  const conceptoLines=doc.splitTextToSize(rrConceptoTexto(cc),CW-2);
+  doc.text(conceptoLines,ML+1,y+3.5);
+  y+=Math.max(8,conceptoLines.length*4.3);
+  doc.setFont('helvetica','bold');doc.setFontSize(10);
+  doc.text(mesNombre+' '+anio,ML+1,y+3.5);
+  doc.text(fmt$(total),ML+CW-1,y+3.5,{align:'right'});
+  y+=8;
+
+  band('LA SUMA DE:',{bg:COLORS.secondary,h:7});
+  doc.setFont('helvetica','bold');doc.setFontSize(8.5);doc.setTextColor(68,68,68);
+  doc.text('Valor en números',ML,y+3.2);
+  doc.text('Valor en letras',ML+55,y+3.2);
+  y+=5;
+  doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(0,0,0);
+  doc.text(fmt$(total),ML,y+3.5);
+  doc.setFont('helvetica','normal');doc.setFontSize(8.5);
+  const letrasLines=doc.splitTextToSize(rrNumATexto(total),CW-56);
+  doc.text(letrasLines,ML+55,y+3.5);
+  y+=Math.max(9,letrasLines.length*4)+2;
+
+  band('FAVOR REALIZAR EL PAGO EN:',{bg:COLORS.secondary,h:7});
+  labelValue('Número de cuenta del beneficiario',benef.cuenta||'');
+  labelValue('Tipo de cuenta (Ahorros - Corriente)',benef.tipoCuenta||'');
+  labelValue('Entidad financiera',benef.entidad||'');
+  labelValue('Sucursal, ciudad de la cuenta',benef.sucursal||'');
+  y+=10;
+
+  doc.setTextColor(0,0,0);doc.setFont('helvetica','normal');doc.setFontSize(10);
+  doc.text('_________________________________',PW/2,y,{align:'center'});y+=5;
+  doc.setFont('helvetica','bold');doc.setFontSize(9);
+  doc.text('FIRMA',PW/2,y,{align:'center'});y+=6;
+  doc.setFontSize(10);
+  labelValue('Nombre completo',p.nombre.toUpperCase());
+  labelValue('Cédula',benef.nit||p.doc||'');
+
+  const fname='Cuenta_Cobro_'+p.nombre.replace(/\s+/g,'_')+'_'+anio+'-'+(numero.split('-').pop()||'').trim()+'.pdf';
+  doc.save(fname);
+  rrBumpConsecutivo(anio,parseInt(numero.split('-').pop())||1);
+  showToast('Cuenta de cobro generada: '+fname,'success');
+}
+
+// ── PDF: Reporte de Servicios (tabla detalle, consistente con la cuenta de cobro) ──
+function rrGenerarReporteServiciosPDF(){
+  const cc=rrCC;if(!cc){showToast('No hay una cuenta de cobro abierta','error');return;}
+  if(!window.jspdf||!window.jspdf.jsPDF){showToast('No se pudo cargar el generador de PDF','error');return;}
+  const {p,clasif,groups}=cc;
+
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({unit:'mm',format:'a4',orientation:'landscape'});
+  const PW=297,ML=12,CW=PW-ML*2;
+  let y=14;
+
+  doc.setFont('helvetica','bold');doc.setFontSize(16);
+  doc.setTextColor(...rrArgbRgb(COLORS.primary));
+  doc.text((p.especialidad||'SERVICIOS').toUpperCase(),PW/2,y,{align:'center'});y+=7;
+
+  doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(0,0,0);
+  const clientesTxt=[...new Set(p.registros.map(r=>r.cliente).filter(Boolean))].join(' · ');
+  doc.text('FECHA: '+cc.fechaCobro+'   ·   '+(clientesTxt||'—'),PW/2,y,{align:'center'});y+=6;
+  doc.text(p.nombre.toUpperCase()+'  ·  CC '+p.doc,PW/2,y,{align:'center'});y+=4;
+
+  // Agrupar por paciente + jornada/cliente usando la MISMA tarifa fijada en la cuenta de cobro
+  const groupKeyOf=r=>clasif.tipo==='auxiliar'?(r.jornada!==''?r.jornada.toString():null):(r.cliente||'SIN CLIENTE');
+  const porPacGrupo={};
+  p.registros.forEach(r=>{
+    const gk=groupKeyOf(r);
+    if(gk===null)return;
+    const pacKey=(r.pacDoc||r.pacNombre)+'||'+gk;
+    if(!porPacGrupo[pacKey])porPacGrupo[pacKey]={
+      paciente:r.pacNombre,doc:r.pacDoc,gk,count:0,
+      novedad:clasif.tipo==='auxiliar'?(gk+' horas'):r.cliente,
+    };
+    porPacGrupo[pacKey].count++;
+  });
+  const grupoByKey={};
+  groups.forEach(g=>{grupoByKey[clasif.tipo==='auxiliar'?g.jornada:g.cliente]=g;});
+
+  const filas=Object.values(porPacGrupo).sort((a,b)=>a.paciente.localeCompare(b.paciente,'es'));
+  let totalCant=0,totalValor=0;
+  const body=filas.map(f=>{
+    const g=grupoByKey[f.gk];
+    const tarifa=g?g.tarifa:0;
+    const subtotal=f.count*tarifa;
+    totalCant+=f.count;totalValor+=subtotal;
+    return[f.paciente,f.doc,String(f.count),fmt$(tarifa),fmt$(subtotal),f.novedad||''];
+  });
+
+  doc.autoTable({
+    startY:y+2,
+    margin:{left:ML,right:ML},
+    head:[['PACIENTE','N° ID','N° ATENCIONES','VALOR UNITARIO','VALOR TOTAL','NOVEDAD']],
+    body,
+    foot:[['TOTAL','',String(totalCant),'',fmt$(totalValor),'']],
+    theme:'grid',
+    headStyles:{fillColor:rrArgbRgb(COLORS.primary),textColor:255,fontStyle:'bold',halign:'center',fontSize:9},
+    footStyles:{fillColor:rrArgbRgb(COLORS.primary),textColor:[255,255,0],fontStyle:'bold',fontSize:10},
+    bodyStyles:{fontSize:8.5,textColor:[0,0,0]},
+    alternateRowStyles:{fillColor:[245,245,245]},
+    columnStyles:{
+      1:{halign:'center',cellWidth:26},
+      2:{halign:'center',cellWidth:26},
+      3:{halign:'right',cellWidth:30},
+      4:{halign:'right',cellWidth:30},
+      5:{cellWidth:50},
+    },
+    didParseCell:(data)=>{
+      if(data.section==='foot'){
+        if(data.column.index===0)data.cell.styles.halign='right';
+        if(data.column.index===2)data.cell.styles.halign='center';
+        if(data.column.index===4)data.cell.styles.halign='right';
+      }
+    },
+  });
+
+  let fy=(doc.lastAutoTable?.finalY||y+2)+14;
+  doc.setFont('helvetica','normal');doc.setFontSize(10);doc.setTextColor(0,0,0);
+  doc.text('QUIÉN RECIBE: _______________________________',ML,fy);fy+=10;
+  doc.text('QUIÉN ENTREGA: ______________________________',ML,fy);
+
+  const fname='Reporte_Servicios_'+p.nombre.replace(/\s+/g,'_')+'_'+cc.anio+'.pdf';
+  doc.save(fname);
   showToast('Reporte de servicios generado: '+fname,'success');
 }
 
